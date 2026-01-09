@@ -43,14 +43,6 @@ async function processTask(task) {
                 if (success) {
                     await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
                     console.log(`Senkronizasyon başarılı: ${profiles.length} profil.`);
-
-                    // Başarılı işlem sonrası 10 sn bekleyip kapat
-                    console.log('\n--- OTOMATİK KAPATMA ---');
-                    console.log('İşlem başarıyla tamamlandı. Bot 10 saniye içinde kapatılacak...');
-                    setTimeout(() => {
-                        console.log('Bot kapatılıyor. Hoşçakalın!');
-                        process.exit(0);
-                    }, 10000);
                 } else {
                     await reportTaskResult(task.id, 'failed', 'Profiler panele gönderilemedi');
                 }
@@ -153,12 +145,11 @@ async function processTask(task) {
         await reportTaskResult(task.id, success ? 'completed' : 'failed', success ? 'Başarılı' : 'Başarısız');
 
         if (success) {
-            // Başarılı işlem sonrası 10 sn bekleyip kapat
-            console.log('\n--- OTOMATİK KAPATMA ---');
-            console.log('Görev başarıyla tamamlandı. Bot 10 saniye içinde kapatılacak...');
-            setTimeout(() => {
-                console.log('Bot kapatılıyor. Hoşçakalın!');
-                process.exit(0);
+            // Başarılı işlem sonrası 10 sn bekleyip tarayıcıyı kapat
+            console.log('\n--- OTOMATİK TARAYICI KAPATMA ---');
+            console.log('Görev başarıyla tamamlandı. Tarayıcı 10 saniye içinde kapatılacak...');
+            setTimeout(async () => {
+                await stopProfile(folderId, visionId);
             }, 10000);
         }
 
