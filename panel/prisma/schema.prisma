@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model FacebookAccount {
+  id              Int       @id @default(autoincrement())
+  username        String
+  password        String
+  status          String    @default("pending") // pending, logged_in, failed
+  visionProfileId String?
+  lastChecked     DateTime?
+  createdAt       DateTime  @default(now())
+  tasks           BotTask[]
+}
+
+model Target {
+  id        Int       @id @default(autoincrement())
+  type      String    // page, group
+  url       String
+  name      String?
+  status    String    @default("pending") // pending, liked, failed
+  createdAt DateTime  @default(now())
+  tasks     BotTask[]
+}
+
+model PostTask {
+  id          Int       @id @default(autoincrement())
+  postUrl     String
+  action      String    // like, comment, share
+  commentText String?   @db.Text
+  status      String    @default("pending") // pending, completed, failed
+  createdAt   DateTime  @default(now())
+  tasks       BotTask[]
+}
+
+model BotTask {
+  id         Int              @id @default(autoincrement())
+  account    FacebookAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId  Int
+  taskType   String           // login, like_target, post_action
+  target     Target?          @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  targetId   Int?
+  postTask   PostTask?        @relation(fields: [postTaskId], references: [id], onDelete: Cascade)
+  postTaskId Int?
+  status     String           @default("pending") // pending, processing, completed, failed
+  result     String?          @db.Text
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}

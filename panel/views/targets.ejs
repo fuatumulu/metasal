@@ -1,0 +1,81 @@
+<%- include('layout', { body: ` <div class="page-header">
+    <h1>Sayfa / Grup Hedefleri</h1>
+    </div>
+
+    ${error ? '<div class="alert alert-error">' + error + '</div>' : ''}
+    ${success ? '<div class="alert alert-success">' + success + '</div>' : ''}
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Yeni Hedef Ekle</h3>
+        </div>
+        <div class="card-body">
+            <form action="/targets/add" method="POST" class="inline-form">
+                <div class="form-group">
+                    <select name="type" required>
+                        <option value="">Tip Seçin</option>
+                        <option value="page">Sayfa</option>
+                        <option value="group">Grup</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <input type="url" name="url" placeholder="Facebook URL" required>
+                </div>
+                <div class="form-group">
+                    <input type="text" name="name" placeholder="İsim (opsiyonel)">
+                </div>
+                <button type="submit" class="btn btn-primary">Ekle</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Hedef Listesi</h3>
+        </div>
+        <div class="card-body">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tip</th>
+                        <th>URL</th>
+                        <th>İsim</th>
+                        <th>Durum</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${targets.length === 0 ? '<tr>
+                        <td colspan="6" class="text-center">Henüz hedef eklenmedi</td>
+                    </tr>' : ''}
+                    ${targets.map(target => `
+                    <tr>
+                        <td>${target.id}</td>
+                        <td>${target.type === 'page' ? '📄 Sayfa' : '👥 Grup'}</td>
+                        <td><a href="${target.url}" target="_blank" class="link">${target.url.substring(0, 40)}...</a>
+                        </td>
+                        <td>${target.name || '-'}</td>
+                        <td>
+                            <span
+                                class="status-badge ${target.status === 'liked' ? 'success' : target.status === 'failed' ? 'danger' : 'warning'}">
+                                ${target.status === 'liked' ? 'Beğenildi' : target.status === 'failed' ? 'Başarısız' :
+                                'Bekliyor'}
+                            </span>
+                        </td>
+                        <td class="actions">
+                            <form action="/targets/retry/${target.id}" method="POST" style="display:inline">
+                                <button type="submit" class="btn btn-sm btn-warning">Yeniden Dene</button>
+                            </form>
+                            <form action="/targets/delete/${target.id}" method="POST" style="display:inline"
+                                onsubmit="return confirm('Bu hedefi silmek istediğinize emin misiniz?')">
+                                <button type="submit" class="btn btn-sm btn-danger">Sil</button>
+                            </form>
+                        </td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    ` }) %>

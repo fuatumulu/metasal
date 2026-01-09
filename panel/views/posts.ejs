@@ -1,0 +1,96 @@
+<%- include('layout', { body: ` <div class="page-header">
+    <h1>Gönderi Görevleri</h1>
+    </div>
+
+    ${error ? '<div class="alert alert-error">' + error + '</div>' : ''}
+    ${success ? '<div class="alert alert-success">' + success + '</div>' : ''}
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Yeni Gönderi Görevi Ekle</h3>
+        </div>
+        <div class="card-body">
+            <form action="/posts/add" method="POST" class="post-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Gönderi URL</label>
+                        <input type="url" name="postUrl" placeholder="Facebook gönderi URL'si" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Eylem</label>
+                        <select name="action" id="actionSelect" required onchange="toggleCommentField()">
+                            <option value="">Seçin</option>
+                            <option value="like">👍 Beğen</option>
+                            <option value="comment">💬 Yorum Yap</option>
+                            <option value="share">🔄 Paylaş</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" id="commentGroup" style="display:none">
+                    <label>Yorum Metni</label>
+                    <textarea name="commentText" rows="3" placeholder="Yazılacak yorum..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Görevi Ekle</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Görev Listesi</h3>
+        </div>
+        <div class="card-body">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>URL</th>
+                        <th>Eylem</th>
+                        <th>Yorum</th>
+                        <th>Durum</th>
+                        <th>İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${posts.length === 0 ? '<tr>
+                        <td colspan="6" class="text-center">Henüz gönderi görevi eklenmedi</td>
+                    </tr>' : ''}
+                    ${posts.map(post => `
+                    <tr>
+                        <td>${post.id}</td>
+                        <td><a href="${post.postUrl}" target="_blank" class="link">${post.postUrl.substring(0,
+                                40)}...</a></td>
+                        <td>${post.action === 'like' ? '👍 Beğen' : post.action === 'comment' ? '💬 Yorum' : '🔄
+                            Paylaş'}</td>
+                        <td>${post.commentText ? post.commentText.substring(0, 30) + '...' : '-'}</td>
+                        <td>
+                            <span
+                                class="status-badge ${post.status === 'completed' ? 'success' : post.status === 'failed' ? 'danger' : 'warning'}">
+                                ${post.status === 'completed' ? 'Tamamlandı' : post.status === 'failed' ? 'Başarısız' :
+                                'Bekliyor'}
+                            </span>
+                        </td>
+                        <td class="actions">
+                            <form action="/posts/retry/${post.id}" method="POST" style="display:inline">
+                                <button type="submit" class="btn btn-sm btn-warning">Yeniden Dene</button>
+                            </form>
+                            <form action="/posts/delete/${post.id}" method="POST" style="display:inline"
+                                onsubmit="return confirm('Bu görevi silmek istediğinize emin misiniz?')">
+                                <button type="submit" class="btn btn-sm btn-danger">Sil</button>
+                            </form>
+                        </td>
+                    </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function toggleCommentField() {
+            const select = document.getElementById('actionSelect');
+            const commentGroup = document.getElementById('commentGroup');
+            commentGroup.style.display = select.value === 'comment' ? 'block' : 'none';
+        }
+    </script>
+    ` }) %>

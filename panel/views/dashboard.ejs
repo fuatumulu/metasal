@@ -1,0 +1,54 @@
+<%- include('layout', { body: ` <div class="page-header">
+    <h1>Dashboard</h1>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">👤</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.totalAccounts}</span>
+                <span class="stat-label">Toplam Hesap</span>
+            </div>
+        </div>
+
+        <div class="stat-card success">
+            <div class="stat-icon">✅</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.loggedInAccounts}</span>
+                <span class="stat-label">Giriş Yapılan</span>
+            </div>
+        </div>
+
+        <div class="stat-card danger">
+            <div class="stat-icon">❌</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.failedAccounts}</span>
+                <span class="stat-label">Başarısız</span>
+            </div>
+        </div>
+
+        <div class="stat-card warning">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.pendingTasks}</span>
+                <span class="stat-label">Bekleyen Görev</span>
+            </div>
+        </div>
+
+        <div class="stat-card info">
+            <div class="stat-icon">🎯</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.totalTargets}</span>
+                <span class="stat-label">Toplam Hedef</span>
+            </div>
+        </div>
+
+        <div class="stat-card info">
+            <div class="stat-icon">📝</div>
+            <div class="stat-info">
+                <span class="stat-value">${stats.totalPosts}</span>
+                <span class="stat-label">Gönderi Görevi</span>
+            </div>
+        </div>
+    </div>
+    ` }) %>
