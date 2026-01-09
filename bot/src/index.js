@@ -81,6 +81,16 @@ async function processTask(task) {
         const pages = await browser.pages();
         const page = pages[0] || await browser.newPage();
 
+        // Facebook Stabilizasyonu: Saçma yenilemeleri engellemek için bekle ve reload et
+        console.log('Facebook oturumu sabitleniyor (10 sn bekleme + reload)...');
+        await sleep(10000);
+        try {
+            await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        } catch (e) {
+            console.log('Reload uyarısı (devam ediliyor):', e.message);
+        }
+        console.log('Oturum sabitlendi, işleme geçiliyor.');
+
         // Görev tipine göre işlem yap
         let success = false;
 
