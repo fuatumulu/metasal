@@ -122,6 +122,16 @@ async function startProfile(folderId, profileId) {
 
                 if (browser) {
                     console.log('Bağlantı başarılı!');
+
+                    // Tarayıcı bildirim izinlerini otomatik engelle (Native bildirim pencerelerini önlemek için)
+                    try {
+                        const context = browser.defaultBrowserContext();
+                        await context.overridePermissions('https://www.facebook.com', ['notifications']);
+                        console.log('Facebook bildirim izinleri devre dışı bırakıldı.');
+                    } catch (e) {
+                        console.log('İzinler override edilemedi (belki anonim pencere değil?):', e.message);
+                    }
+
                     break;
                 }
             } catch (err) {

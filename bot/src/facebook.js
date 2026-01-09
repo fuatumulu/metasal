@@ -117,6 +117,31 @@ async function login(page, username, password, cookie = null) {
 }
 
 /**
+ * Facebook popuplarını (bildirimler, çerezler vb.) kapatmaya çalış
+ */
+async function handlePopups(page) {
+    try {
+        await page.evaluate(() => {
+            const popupButtons = [
+                'not now', 'şimdi değil', 'close', 'kapat',
+                'accept all', 'tümünü kabul et', 'allow', 'izin ver',
+                'decline', 'reddet'
+            ];
+
+            // Tüm butonları ve tıklanabilir metinleri tara
+            const buttons = Array.from(document.querySelectorAll('div[role="button"], span, b, button'));
+            for (const btn of buttons) {
+                const text = btn.textContent.trim().toLowerCase();
+                if (popupButtons.includes(text)) {
+                    btn.click();
+                }
+            }
+        });
+        await sleep(1500);
+    } catch (e) { }
+}
+
+/**
  * Sayfa veya grubu beğen/takip et
  */
 async function likeTarget(page, targetUrl, targetType) {
@@ -126,122 +151,112 @@ async function likeTarget(page, targetUrl, targetType) {
         await page.goto(targetUrl, { waitUntil: 'networkidle2' });
         await sleep(ACTION_DELAY);
 
+        // Önce popupları temizle
+        await handlePopups(page);
+
         // Sayfa için Like/Follow butonu
         if (targetType === 'page') {
-            const result = await page.evaluate(() => {
-                // Aranacak metinler ve durumlar
-                const targets = {
-                    action: ['follow', 'takip et', 'like', 'beğen'],
-                    active: ['following', 'takip ediliyor', 'liked', 'beğendin']
-                };
-
-                const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
-
-                // Önce zaten aktif mi kontrol et
-                const activeElement = allElements.find(el => {
-                    const text = el.textContent.trim().toLowerCase();
-                    return targets.active.some(t => text === t);
+            const getStatus = async () => {
+                return await page.evaluate(() => {
+                    const targets = {
+                        action: ['follow', 'takip et', 'like', 'beğen'],
+                        active: ['following', 'takip ediliyor', 'liked', 'beğendin', 'beğendiniz']
+                    };
+                    const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
+                    const active = allElements.find(el => targets.active.some(t => el.textContent.trim().toLowerCase() === t));
+                    if (active) return { status: 'active', text: active.textContent.trim() };
+                    const action = allElements.find(el => targets.action.some(t => el.textContent.trim().toLowerCase() === t));
+                    if (action) return { status: 'action', text: action.textContent.trim() };
+                    return { status: 'not_found' };
                 });
+            };
 
-                if (activeElement) {
-                    return { status: 'already_active' };
-                }
+            let current = await getStatus();
 
-                // Aktif değilse buton ara
-                const actionElement = allElements.find(el => {
-                    const text = el.textContent.trim().toLowerCase();
-                    return targets.action.some(t => text === t);
-                });
-
-                if (actionElement) {
-                    // Bulunan elementin en yakın tıklanabilir üst elementini bul (veya kendisi)
-                    const clickable = actionElement.closest('[role="button"]') ||
-                        actionElement.closest('div[tabindex="0"]') ||
-                        actionElement;
-
-                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // Tıklama işlemini evaluate içinde yapmamak daha güvenli (Puppeteer'ın click() fonksyionunu kullanacağız)
-                    // Ama burada görsel bir geri bildirim için highlight yapabiliriz
-                    return { status: 'found', text: actionElement.textContent.trim() };
-                }
-
-                return { status: 'not_found' };
-            });
-
-            if (result.status === 'already_active') {
-                console.log('Zaten takip ediliyor/beğenilmiş. İşlem atlanıyor.');
+            if (current.status === 'active') {
+                console.log(`Zaten aktif (${current.text}). İşlem atlanıyor.`);
                 return true;
             }
 
-            if (result.status === 'found') {
-                console.log(`"${result.text}" butonu bulundu, tıklanıyor...`);
+            if (current.status === 'action') {
+                console.log(`"${current.text}" butonu bulundu, tıklanıyor...`);
 
-                // Butonu Puppeteer ile bul ve tıkla
                 const element = await page.evaluateHandle((text) => {
                     const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent.trim() === text);
                     return el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
-                }, result.text);
+                }, current.text);
 
                 if (element) {
                     await element.asElement()?.click();
-                    await sleep(2000);
-                    console.log('İşlem başarıyla gerçekleştirildi.');
-                    return true;
+                    console.log('Tıklandı, doğrulanıyor...');
+                    await sleep(4000); // Facebook'un durumu güncellemesi için biraz daha fazla bekle
+
+                    // DOĞRULAMA: Metin değişti mi?
+                    current = await getStatus();
+                    if (current.status === 'active') {
+                        console.log(`Başarılı! Yeni durum: ${current.text}`);
+                        return true;
+                    } else {
+                        console.log('HATA: Butona tıklandı ancak durum değişmedi (Follow -> Following olmadı). Popupları tekrar deniyoruz...');
+                        await handlePopups(page);
+                        await sleep(1000);
+                        current = await getStatus();
+                        if (current.status === 'active') return true;
+                        return false;
+                    }
                 }
             }
         }
 
         // Grup için Katıl butonu
         if (targetType === 'group') {
-            const result = await page.evaluate(() => {
-                const targets = {
-                    action: ['join group', 'gruba katıl', 'join', 'katıl'],
-                    active: ['joined', 'katıldın', 'visit group', 'grubu ziyaret et', 'gruba göz at', 'visit', 'ziyaret et', 'cancel request', 'isteği iptal et']
-                };
-
-                const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
-
-                const activeElement = allElements.find(el => {
-                    const text = el.textContent.trim().toLowerCase();
-                    return targets.active.some(t => text === t);
+            const getStatus = async () => {
+                return await page.evaluate(() => {
+                    const targets = {
+                        action: ['join group', 'gruba katıl', 'join', 'katıl'],
+                        active: ['joined', 'katıldın', 'visit group', 'grubu ziyaret et', 'gruba göz at', 'visit', 'ziyaret et', 'cancel request', 'isteği iptal et']
+                    };
+                    const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
+                    const active = allElements.find(el => targets.active.some(t => el.textContent.trim().toLowerCase() === t));
+                    if (active) return { status: 'active', text: active.textContent.trim() };
+                    const action = allElements.find(el => targets.action.some(t => el.textContent.trim().toLowerCase() === t));
+                    if (action) return { status: 'action', text: action.textContent.trim() };
+                    return { status: 'not_found' };
                 });
+            };
 
-                if (activeElement) return { status: 'already_active' };
+            let current = await getStatus();
 
-                const actionElement = allElements.find(el => {
-                    const text = el.textContent.trim().toLowerCase();
-                    return targets.action.some(t => text === t);
-                });
-
-                if (actionElement) {
-                    return { status: 'found', text: actionElement.textContent.trim() };
-                }
-
-                return { status: 'not_found' };
-            });
-
-            if (result.status === 'already_active') {
-                console.log('Zaten gruptasınız veya istek gönderilmiş.');
+            if (current.status === 'active') {
+                console.log(`Zaten gruptasınız veya istek gönderilmiş (${current.text}).`);
                 return true;
             }
 
-            if (result.status === 'found') {
-                console.log(`"${result.text}" butonu bulundu, gruba katılınıyor...`);
+            if (current.status === 'action') {
+                console.log(`"${current.text}" butonu bulundu, gruba katılınıyor...`);
                 const element = await page.evaluateHandle((text) => {
                     const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent.trim() === text);
                     return el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
-                }, result.text);
+                }, current.text);
 
                 if (element) {
                     await element.asElement()?.click();
-                    await sleep(2000);
-                    console.log('Katılım isteği gönderildi.');
-                    return true;
+                    console.log('Tıklandı, doğrulanıyor...');
+                    await sleep(4000);
+
+                    current = await getStatus();
+                    if (current.status === 'active') {
+                        console.log(`Başarılı! Yeni durum: ${current.text}`);
+                        return true;
+                    } else {
+                        console.log('HATA: Katıl butonu tıklandı ama durum değişmedi.');
+                        return false;
+                    }
                 }
             }
         }
 
-        console.log('Uygun buton (Follow/Like/Join) bulunamadı.');
+        console.log('Uygun buton bulunamadı veya etkileşim bir engel nedeniyle yapılamadı.');
         return false;
     } catch (error) {
         console.error('Etkileşim hatası:', error.message);
