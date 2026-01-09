@@ -21,7 +21,28 @@ async function listProfiles() {
         }
 
         const headers = { 'X-Token': VISION_API_TOKEN };
+        const filterFolderId = process.env.VISION_FOLDER_ID;
 
+        // Eğer bir klasör ID'si verilmişse, doğrudan o klasörün profillerini çek
+        if (filterFolderId && filterFolderId !== 'your_folder_id_here' && filterFolderId !== 'optional_folder_guid_here') {
+            console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
+            try {
+                const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, { headers });
+                const items = profilesRes.data.data?.items || [];
+
+                return items.map(p => ({
+                    visionId: p.id,
+                    folderId: p.folder_id,
+                    name: p.profile_name,
+                    status: p.running ? 'active' : 'disabled'
+                }));
+            } catch (err) {
+                console.error(`"${filterFolderId}" klasörü profilleri alınamadı:`, err.message);
+                return [];
+            }
+        }
+
+        // Eğer klasör ID'si yoksa tüm klasörleri listele (Fallback)
         // 1. Klasörleri al
         const foldersRes = await axios.get(`${VISION_CLOUD_API}/folders`, { headers });
         const folders = foldersRes.data.data || [];
@@ -30,28 +51,19 @@ async function listProfiles() {
         folders.forEach(f => console.log(`İsim: ${f.folder_name} | ID: ${f.id}`));
         console.log('-----------------------------\n');
 
-        const filterFolderId = process.env.VISION_FOLDER_ID;
-        if (filterFolderId) {
-            console.log(`Filtre uygulanıyor: Sadece "${filterFolderId}" klasörü çekilecek.`);
-        }
-
         let allProfiles = [];
 
         // 2. Her klasör için profilleri al
         for (const folder of folders) {
-            // Eğer filtre varsa ve bu klasör o değilse atla
-            if (filterFolderId && folder.id !== filterFolderId) continue;
-
             try {
                 const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${folder.id}/profiles`, { headers });
                 const items = profilesRes.data.data?.items || [];
 
-                // Profil verilerini bizim modelimize uygun hale getir
                 const formatted = items.map(p => ({
                     visionId: p.id,
                     folderId: p.folder_id,
                     name: p.profile_name,
-                    status: p.running ? 'active' : 'disabled' // Vision'da çalışma durumu
+                    status: p.running ? 'active' : 'disabled'
                 }));
 
                 allProfiles = allProfiles.concat(formatted);
