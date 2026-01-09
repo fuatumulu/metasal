@@ -73,8 +73,8 @@ model Comment {
 
 model BotTask {
   id         Int            @id @default(autoincrement())
-  profile    VisionProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId  Int
+  profile    VisionProfile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId  Int?
   taskType   String         // like_target, post_action
   target     Target?        @relation(fields: [targetId], references: [id], onDelete: Cascade)
   targetId   Int?

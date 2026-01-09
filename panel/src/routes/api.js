@@ -140,4 +140,52 @@ router.post('/tasks/:id/result', async (req, res) => {
     }
 });
 
+// Profilleri senkronize et (Bot tarafından gönderilir)
+router.post('/profiles/push', async (req, res) => {
+    const { profiles } = req.body;
+
+    if (!Array.isArray(profiles)) {
+        return res.status(400).json({ error: 'Geçersiz profil listesi' });
+    }
+
+    try {
+        let addedCount = 0;
+        let updatedCount = 0;
+
+        for (const vp of profiles) {
+            const existing = await prisma.visionProfile.findUnique({
+                where: { visionId: vp.visionId }
+            });
+
+            if (existing) {
+                await prisma.visionProfile.update({
+                    where: { id: existing.id },
+                    data: {
+                        name: vp.name || vp.visionId,
+                        folderId: vp.folderId,
+                        lastSyncedAt: new Date()
+                    }
+                });
+                updatedCount++;
+            } else {
+                await prisma.visionProfile.create({
+                    data: {
+                        visionId: vp.visionId,
+                        folderId: vp.folderId,
+                        name: vp.name || vp.visionId,
+                        lastSyncedAt: new Date()
+                    }
+                });
+                addedCount++;
+            }
+        }
+
+        res.json({ success: true, addedCount, updatedCount });
+    } catch (error) {
+        console.error('Profile push error:', error);
+        res.status(500).json({ error: 'Sunucu hatası' });
+    }
+});
+
 module.exports = router;
+

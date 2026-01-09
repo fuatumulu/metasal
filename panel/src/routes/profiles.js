@@ -26,52 +26,24 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Vision profillerini senkronize et
+// Vision profillerini senkronize et (Görev oluşturur)
 router.post('/sync', async (req, res) => {
     try {
-        // Bot'tan Vision profillerini al
-        const response = await axios.get(`${BOT_API_URL}/vision-profiles`, { timeout: 30000 });
-        const visionProfiles = response.data.profiles || [];
-
-        if (visionProfiles.length === 0) {
-            const profiles = await prisma.visionProfile.findMany({
-                orderBy: { createdAt: 'desc' },
-                include: { _count: { select: { likedTargets: true, tasks: true } } }
-            });
-            return res.render('profiles', { profiles, error: 'Vision\'da profil bulunamadı', success: null });
-        }
-
-        let addedCount = 0;
-        let updatedCount = 0;
-
-        for (const vp of visionProfiles) {
-            const existing = await prisma.visionProfile.findUnique({
-                where: { visionId: vp.visionId }
-            });
-
-            if (existing) {
-                // Güncelle
-                await prisma.visionProfile.update({
-                    where: { id: existing.id },
-                    data: {
-                        name: vp.name || vp.visionId,
-                        folderId: vp.folderId,
-                        lastSyncedAt: new Date()
-                    }
-                });
-                updatedCount++;
-            } else {
-                // Yeni ekle
-                await prisma.visionProfile.create({
-                    data: {
-                        visionId: vp.visionId,
-                        folderId: vp.folderId,
-                        name: vp.name || vp.visionId,
-                        lastSyncedAt: new Date()
-                    }
-                });
-                addedCount++;
+        // Zaten bekleyen bir senkronizasyon görevi var mı kontrol et
+        const existingTask = await prisma.botTask.findFirst({
+            where: {
+                taskType: 'sync_profiles',
+                status: { in: ['pending', 'processing'] }
             }
+        });
+
+        if (!existingTask) {
+            await prisma.botTask.create({
+                data: {
+                    taskType: 'sync_profiles',
+                    status: 'pending'
+                }
+            });
         }
 
         const profiles = await prisma.visionProfile.findMany({
@@ -79,24 +51,16 @@ router.post('/sync', async (req, res) => {
             include: { _count: { select: { likedTargets: true, tasks: true } } }
         });
 
-        const message = `Senkronizasyon tamamlandı: ${addedCount} yeni, ${updatedCount} güncellendi`;
-        res.render('profiles', { profiles, error: null, success: message });
+        res.render('profiles', {
+            profiles,
+            error: null,
+            success: 'Senkronizasyon görevi oluşturuldu. Botun işleme alması bekleniyor...'
+        });
     } catch (error) {
-        console.error('Sync error:', error);
-        const profiles = await prisma.visionProfile.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: { _count: { select: { likedTargets: true, tasks: true } } }
-        });
-
-        let errorMsg = 'Senkronizasyon başarısız';
-        if (error.code === 'ECONNREFUSED') {
-            errorMsg = 'Bot\'a bağlanılamadı. Bot çalışıyor mu?';
-        }
-
-        res.render('profiles', { profiles, error: errorMsg, success: null });
+        console.error('Sync task creation error:', error);
+        res.redirect('/profiles');
     }
 });
-
 // Profil durumunu değiştir (aktif/devre dışı)
 router.post('/toggle/:id', async (req, res) => {
     const { id } = req.params;

@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const { getPendingTask, reportTaskResult } = require('./api');
+const { getPendingTask, reportTaskResult, pushProfiles } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
 const axios = require('axios');
@@ -33,6 +33,28 @@ async function processTask(task) {
     console.log(`\n========================================`);
     console.log(`Görev #${task.id} işleniyor: ${task.taskType}`);
     console.log(`========================================`);
+
+    if (task.taskType === 'sync_profiles') {
+        console.log('Profil senkronizasyonu başlatılıyor...');
+        try {
+            const profiles = await listProfiles();
+            if (profiles.length > 0) {
+                const success = await pushProfiles(profiles);
+                if (success) {
+                    await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
+                    console.log(`Senkronizasyon başarılı: ${profiles.length} profil.`);
+                } else {
+                    await reportTaskResult(task.id, 'failed', 'Profiler panele gönderilemedi');
+                }
+            } else {
+                await reportTaskResult(task.id, 'failed', 'Vision API\'dan profil alınamadı');
+            }
+        } catch (err) {
+            console.error('Sync error:', err.message);
+            await reportTaskResult(task.id, 'failed', err.message);
+        }
+        return;
+    }
 
     const profile = task.profile;
     const visionId = profile.visionId;

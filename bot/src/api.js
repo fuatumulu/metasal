@@ -30,7 +30,19 @@ async function reportTaskResult(taskId, status, result = null) {
     }
 }
 
+async function pushProfiles(profiles) {
+    try {
+        await axios.post(`${PANEL_URL}/api/profiles/push`, { profiles });
+        return true;
+    } catch (error) {
+        console.error('Push profiles error:', error.message);
+        return false;
+    }
+}
+
 module.exports = {
     getPendingTask,
-    reportTaskResult
+    reportTaskResult,
+    pushProfiles
 };
+
