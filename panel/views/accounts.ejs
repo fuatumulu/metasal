@@ -1,71 +1,133 @@
-<%- include('layout', { body: ` <div class="page-header">
-    <h1>Facebook Hesapları</h1>
-    </div>
+<!DOCTYPE html>
+<html lang="tr">
 
-    ${error ? '<div class="alert alert-error">' + error + '</div>' : ''}
-    ${success ? '<div class="alert alert-success">' + success + '</div>' : ''}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaSal - Hesaplar</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
 
-    <div class="card">
-        <div class="card-header">
-            <h3>Yeni Hesap Ekle</h3>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>MetaSal</h2>
         </div>
-        <div class="card-body">
-            <form action="/accounts/add" method="POST" class="inline-form">
-                <div class="form-group">
-                    <input type="text" name="username" placeholder="Facebook kullanıcı adı veya e-posta" required>
-                </div>
-                <div class="form-group">
-                    <input type="password" name="password" placeholder="Şifre" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Ekle</button>
-            </form>
+        <ul class="nav-links">
+            <li>
+                <a href="/dashboard">📊 Dashboard</a>
+            </li>
+            <li class="active">
+                <a href="/accounts">👤 Hesaplar</a>
+            </li>
+            <li>
+                <a href="/targets">🎯 Hedefler</a>
+            </li>
+            <li>
+                <a href="/posts">📝 Gönderiler</a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <a href="/logout" class="logout-btn">🚪 Çıkış</a>
         </div>
-    </div>
+    </nav>
 
-    <div class="card">
-        <div class="card-header">
-            <h3>Hesap Listesi</h3>
+    <main class="content">
+        <div class="page-header">
+            <h1>Facebook Hesapları</h1>
         </div>
-        <div class="card-body">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Kullanıcı Adı</th>
-                        <th>Durum</th>
-                        <th>Son Kontrol</th>
-                        <th>İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${accounts.length === 0 ? '<tr>
-                        <td colspan="5" class="text-center">Henüz hesap eklenmedi</td>
-                    </tr>' : ''}
-                    ${accounts.map(account => `
-                    <tr>
-                        <td>${account.id}</td>
-                        <td>${account.username}</td>
-                        <td>
-                            <span
-                                class="status-badge ${account.status === 'logged_in' ? 'success' : account.status === 'failed' ? 'danger' : 'warning'}">
-                                ${account.status === 'logged_in' ? 'Giriş Yapıldı' : account.status === 'failed' ?
-                                'Başarısız' : 'Bekliyor'}
-                            </span>
-                        </td>
-                        <td>${account.lastChecked ? new Date(account.lastChecked).toLocaleString('tr-TR') : '-'}</td>
-                        <td class="actions">
-                            <form action="/accounts/retry/${account.id}" method="POST" style="display:inline">
-                                <button type="submit" class="btn btn-sm btn-warning">Yeniden Dene</button>
-                            </form>
-                            <form action="/accounts/delete/${account.id}" method="POST" style="display:inline"
-                                onsubmit="return confirm('Bu hesabı silmek istediğinize emin misiniz?')">
-                                <button type="submit" class="btn btn-sm btn-danger">Sil</button>
-                            </form>
-                        </td>
-                    </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    ` }) %>
+
+        <% if (error) { %>
+            <div class="alert alert-error">
+                <%= error %>
+            </div>
+            <% } %>
+                <% if (success) { %>
+                    <div class="alert alert-success">
+                        <%= success %>
+                    </div>
+                    <% } %>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Yeni Hesap Ekle</h3>
+                            </div>
+                            <div class="card-body">
+                                <form action="/accounts/add" method="POST" class="inline-form">
+                                    <div class="form-group">
+                                        <input type="text" name="username"
+                                            placeholder="Facebook kullanıcı adı veya e-posta" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <input type="password" name="password" placeholder="Şifre" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Ekle</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Hesap Listesi</h3>
+                            </div>
+                            <div class="card-body">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Kullanıcı Adı</th>
+                                            <th>Durum</th>
+                                            <th>Son Kontrol</th>
+                                            <th>İşlemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% if (accounts.length===0) { %>
+                                            <tr>
+                                                <td colspan="5" class="text-center">Henüz hesap eklenmedi</td>
+                                            </tr>
+                                            <% } %>
+                                                <% accounts.forEach(function(account) { %>
+                                                    <tr>
+                                                        <td>
+                                                            <%= account.id %>
+                                                        </td>
+                                                        <td>
+                                                            <%= account.username %>
+                                                        </td>
+                                                        <td>
+                                                            <span
+                                                                class="status-badge <%= account.status === 'logged_in' ? 'success' : account.status === 'failed' ? 'danger' : 'warning' %>">
+                                                                <%= account.status==='logged_in' ? 'Giriş Yapıldı' :
+                                                                    account.status==='failed' ? 'Başarısız' : 'Bekliyor'
+                                                                    %>
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <%= account.lastChecked ? new
+                                                                Date(account.lastChecked).toLocaleString('tr-TR') : '-'
+                                                                %>
+                                                        </td>
+                                                        <td class="actions">
+                                                            <form action="/accounts/retry/<%= account.id %>"
+                                                                method="POST" style="display:inline">
+                                                                <button type="submit"
+                                                                    class="btn btn-sm btn-warning">Yeniden Dene</button>
+                                                            </form>
+                                                            <form action="/accounts/delete/<%= account.id %>"
+                                                                method="POST" style="display:inline"
+                                                                onsubmit="return confirm('Bu hesabı silmek istediğinize emin misiniz?')">
+                                                                <button type="submit"
+                                                                    class="btn btn-sm btn-danger">Sil</button>
+                                                            </form>
+                                                        </td>
+                                                    </tr>
+                                                    <% }); %>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+    </main>
+</body>
+
+</html>

@@ -1,54 +1,104 @@
-<%- include('layout', { body: ` <div class="page-header">
-    <h1>Dashboard</h1>
-    </div>
+<!DOCTYPE html>
+<html lang="tr">
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon">👤</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.totalAccounts}</span>
-                <span class="stat-label">Toplam Hesap</span>
-            </div>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaSal - Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>MetaSal</h2>
+        </div>
+        <ul class="nav-links">
+            <li class="active">
+                <a href="/dashboard">📊 Dashboard</a>
+            </li>
+            <li>
+                <a href="/accounts">👤 Hesaplar</a>
+            </li>
+            <li>
+                <a href="/targets">🎯 Hedefler</a>
+            </li>
+            <li>
+                <a href="/posts">📝 Gönderiler</a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <a href="/logout" class="logout-btn">🚪 Çıkış</a>
+        </div>
+    </nav>
+
+    <main class="content">
+        <div class="page-header">
+            <h1>Dashboard</h1>
         </div>
 
-        <div class="stat-card success">
-            <div class="stat-icon">✅</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.loggedInAccounts}</span>
-                <span class="stat-label">Giriş Yapılan</span>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">👤</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.totalAccounts %>
+                    </span>
+                    <span class="stat-label">Toplam Hesap</span>
+                </div>
             </div>
-        </div>
 
-        <div class="stat-card danger">
-            <div class="stat-icon">❌</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.failedAccounts}</span>
-                <span class="stat-label">Başarısız</span>
+            <div class="stat-card success">
+                <div class="stat-icon">✅</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.loggedInAccounts %>
+                    </span>
+                    <span class="stat-label">Giriş Yapılan</span>
+                </div>
             </div>
-        </div>
 
-        <div class="stat-card warning">
-            <div class="stat-icon">⏳</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.pendingTasks}</span>
-                <span class="stat-label">Bekleyen Görev</span>
+            <div class="stat-card danger">
+                <div class="stat-icon">❌</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.failedAccounts %>
+                    </span>
+                    <span class="stat-label">Başarısız</span>
+                </div>
             </div>
-        </div>
 
-        <div class="stat-card info">
-            <div class="stat-icon">🎯</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.totalTargets}</span>
-                <span class="stat-label">Toplam Hedef</span>
+            <div class="stat-card warning">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.pendingTasks %>
+                    </span>
+                    <span class="stat-label">Bekleyen Görev</span>
+                </div>
             </div>
-        </div>
 
-        <div class="stat-card info">
-            <div class="stat-icon">📝</div>
-            <div class="stat-info">
-                <span class="stat-value">${stats.totalPosts}</span>
-                <span class="stat-label">Gönderi Görevi</span>
+            <div class="stat-card info">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.totalTargets %>
+                    </span>
+                    <span class="stat-label">Toplam Hedef</span>
+                </div>
+            </div>
+
+            <div class="stat-card info">
+                <div class="stat-icon">📝</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.totalPosts %>
+                    </span>
+                    <span class="stat-label">Gönderi Görevi</span>
+                </div>
             </div>
         </div>
-    </div>
-    ` }) %>
+    </main>
+</body>
+
+</html>
