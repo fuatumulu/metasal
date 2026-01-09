@@ -151,24 +151,20 @@ async function processTask(task) {
             // Başarılı işlem sonrası 10 sn bekleyip tarayıcıyı kapat
             console.log('\n--- OTOMATİK TARAYICI KAPATMA ---');
             console.log('Görev başarıyla tamamlandı. Tarayıcı 10 saniye içinde kapatılacak...');
-            setTimeout(async () => {
-                await stopProfile(folderId, visionId);
-            }, 10000);
+            await sleep(10000);
+            await stopProfile(folderId, visionId);
         }
 
     } catch (error) {
         console.error('Görev işleme hatası:', error);
         await reportTaskResult(task.id, 'failed', error.message);
     } finally {
-        // Browser'ı kapatma, sadece disconnect et (Vision profili açık kalsın ama biz bağlantıyı koparalım)
+        // Bağlantıyı kopar (Vision profili stopProfile ile zaten kapandıysa hata vermez)
         if (browser) {
             try {
                 await browser.disconnect();
             } catch (e) { }
         }
-
-        // Önemli: Vision'da profili durdurmuyoruz (stopProfile çağırmıyoruz) 
-        // çünkü kullanıcı profili açık tutmak istiyor olabilir.
     }
 }
 
