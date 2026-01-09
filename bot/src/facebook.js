@@ -62,7 +62,6 @@ async function likeTarget(page, targetUrl, targetType) {
 
         // Sayfa için Like butonu
         if (targetType === 'page') {
-            // "Beğen" veya "Like" butonu ara
             const likeBtn = await page.evaluateHandle(() => {
                 const buttons = Array.from(document.querySelectorAll('[role="button"]'));
                 return buttons.find(btn => {
@@ -106,23 +105,76 @@ async function likeTarget(page, targetUrl, targetType) {
 }
 
 /**
- * Gönderi beğen
+ * Kelimeye göre gönderi bul
  */
-async function likePost(page, postUrl) {
+async function findPostByKeyword(page, keyword) {
     try {
-        console.log(`Gönderi beğeniliyor: ${postUrl}`);
+        console.log(`Gönderi aranıyor: "${keyword}"`);
 
-        await page.goto(postUrl, { waitUntil: 'networkidle2' });
-        await sleep(ACTION_DELAY);
+        // Ana sayfaya git
+        await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
+        await sleep(2000);
 
-        // Like butonu
-        const likeBtn = await page.evaluateHandle(() => {
-            const buttons = Array.from(document.querySelectorAll('[aria-label*="Like"], [aria-label*="Beğen"]'));
-            return buttons[0];
+        // Sayfayı birkaç kez scroll et ve gönderi ara
+        for (let i = 0; i < 10; i++) {
+            // Sayfadaki tüm gönderileri tara
+            const found = await page.evaluate((searchText) => {
+                const posts = document.querySelectorAll('[data-ad-preview="message"], [data-ad-comet-preview="message"], div[dir="auto"]');
+                for (const post of posts) {
+                    if (post.textContent.toLowerCase().includes(searchText.toLowerCase())) {
+                        // Gönderiyi bulduk, tıklanabilir elementi bul
+                        const postContainer = post.closest('[role="article"]') || post.closest('div[data-pagelet]');
+                        if (postContainer) {
+                            postContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }, keyword);
+
+            if (found) {
+                console.log('Gönderi bulundu');
+                await sleep(1000);
+                return true;
+            }
+
+            // Scroll et
+            await page.evaluate(() => {
+                window.scrollBy(0, 800);
+            });
+            await sleep(2000);
+        }
+
+        console.log('Gönderi bulunamadı');
+        return false;
+    } catch (error) {
+        console.error('Gönderi arama hatası:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Mevcut gönderiyi beğen (scroll sonrası görünür gönderi)
+ */
+async function likeCurrentPost(page) {
+    try {
+        console.log('Gönderi beğeniliyor...');
+
+        const liked = await page.evaluate(() => {
+            // Görünür alandaki Like butonunu bul
+            const likeButtons = document.querySelectorAll('[aria-label*="Like"], [aria-label*="Beğen"]');
+            for (const btn of likeButtons) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.top > 0 && rect.top < window.innerHeight) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
         });
 
-        if (likeBtn) {
-            await likeBtn.asElement()?.click();
+        if (liked) {
             await sleep(2000);
             console.log('Gönderi beğenildi');
             return true;
@@ -137,27 +189,37 @@ async function likePost(page, postUrl) {
 }
 
 /**
- * Gönderiye yorum yap
+ * Mevcut gönderiye yorum yap
  */
-async function commentPost(page, postUrl, commentText) {
+async function commentCurrentPost(page, commentText) {
     try {
-        console.log(`Yorum yapılıyor: ${postUrl}`);
+        console.log('Yorum yapılıyor...');
 
-        await page.goto(postUrl, { waitUntil: 'networkidle2' });
-        await sleep(ACTION_DELAY);
-
-        // Yorum alanına tıkla
-        const commentBox = await page.evaluateHandle(() => {
-            const inputs = Array.from(document.querySelectorAll('[contenteditable="true"]'));
-            return inputs.find(inp => {
-                const placeholder = inp.getAttribute('aria-placeholder') || inp.getAttribute('placeholder') || '';
-                return placeholder.toLowerCase().includes('yorum') || placeholder.toLowerCase().includes('comment');
-            });
+        // Yorum butonuna tıkla
+        const clicked = await page.evaluate(() => {
+            const commentButtons = document.querySelectorAll('[aria-label*="Comment"], [aria-label*="Yorum"]');
+            for (const btn of commentButtons) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.top > 0 && rect.top < window.innerHeight) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
         });
 
+        if (!clicked) {
+            console.log('Yorum butonu bulunamadı');
+            return false;
+        }
+
+        await sleep(1500);
+
+        // Yorum alanına yaz
+        const commentBox = await page.$('[contenteditable="true"][role="textbox"]');
         if (commentBox) {
-            await commentBox.asElement()?.click();
-            await sleep(1000);
+            await commentBox.click();
+            await sleep(500);
             await page.keyboard.type(commentText, { delay: 50 });
             await sleep(500);
             await page.keyboard.press('Enter');
@@ -175,43 +237,52 @@ async function commentPost(page, postUrl, commentText) {
 }
 
 /**
- * Gönderiyi paylaş
+ * Mevcut gönderiyi paylaş
  */
-async function sharePost(page, postUrl) {
+async function shareCurrentPost(page) {
     try {
-        console.log(`Gönderi paylaşılıyor: ${postUrl}`);
+        console.log('Gönderi paylaşılıyor...');
 
-        await page.goto(postUrl, { waitUntil: 'networkidle2' });
-        await sleep(ACTION_DELAY);
-
-        // Share butonu
-        const shareBtn = await page.evaluateHandle(() => {
-            const buttons = Array.from(document.querySelectorAll('[aria-label*="Share"], [aria-label*="Paylaş"]'));
-            return buttons[0];
+        // Share butonuna tıkla
+        const clicked = await page.evaluate(() => {
+            const shareButtons = document.querySelectorAll('[aria-label*="Share"], [aria-label*="Paylaş"]');
+            for (const btn of shareButtons) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.top > 0 && rect.top < window.innerHeight) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
         });
 
-        if (shareBtn) {
-            await shareBtn.asElement()?.click();
-            await sleep(1500);
-
-            // "Share now" veya "Şimdi paylaş" seçeneği
-            const shareNowBtn = await page.evaluateHandle(() => {
-                const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="button"]'));
-                return items.find(item => {
-                    const text = item.textContent.toLowerCase();
-                    return text.includes('share now') || text.includes('şimdi paylaş') || text.includes('share to feed');
-                });
-            });
-
-            if (shareNowBtn) {
-                await shareNowBtn.asElement()?.click();
-                await sleep(2000);
-                console.log('Gönderi paylaşıldı');
-                return true;
-            }
+        if (!clicked) {
+            console.log('Paylaş butonu bulunamadı');
+            return false;
         }
 
-        console.log('Paylaş butonu bulunamadı');
+        await sleep(1500);
+
+        // "Share now" seçeneğine tıkla
+        const shared = await page.evaluate(() => {
+            const items = document.querySelectorAll('[role="menuitem"], [role="button"]');
+            for (const item of items) {
+                const text = item.textContent.toLowerCase();
+                if (text.includes('share now') || text.includes('şimdi paylaş') || text.includes('share to feed')) {
+                    item.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (shared) {
+            await sleep(2000);
+            console.log('Gönderi paylaşıldı');
+            return true;
+        }
+
+        console.log('Paylaş seçeneği bulunamadı');
         return false;
     } catch (error) {
         console.error('Paylaşma hatası:', error.message);
@@ -219,10 +290,33 @@ async function sharePost(page, postUrl) {
     }
 }
 
+// Eski fonksiyonlar (geriye uyumluluk için)
+async function likePost(page, postUrl) {
+    await page.goto(postUrl, { waitUntil: 'networkidle2' });
+    await sleep(ACTION_DELAY);
+    return await likeCurrentPost(page);
+}
+
+async function commentPost(page, postUrl, commentText) {
+    await page.goto(postUrl, { waitUntil: 'networkidle2' });
+    await sleep(ACTION_DELAY);
+    return await commentCurrentPost(page, commentText);
+}
+
+async function sharePost(page, postUrl) {
+    await page.goto(postUrl, { waitUntil: 'networkidle2' });
+    await sleep(ACTION_DELAY);
+    return await shareCurrentPost(page);
+}
+
 module.exports = {
     sleep,
     login,
     likeTarget,
+    findPostByKeyword,
+    likeCurrentPost,
+    commentCurrentPost,
+    shareCurrentPost,
     likePost,
     commentPost,
     sharePost

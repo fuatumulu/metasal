@@ -68,6 +68,23 @@
 
                         <div class="card">
                             <div class="card-header">
+                                <h3>Toplu Hesap Ekle</h3>
+                            </div>
+                            <div class="card-body">
+                                <form action="/accounts/bulk-add" method="POST">
+                                    <div class="form-group">
+                                        <label>Her satıra bir hesap yazın (kullanıcıadı:şifre formatında)</label>
+                                        <textarea name="bulkAccounts" rows="6" placeholder="ornek@email.com:sifre123
+diger@email.com:sifre456
+kullanici3:sifre789" style="width:100%;font-family:monospace;"></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Toplu Ekle</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
                                 <h3>Hesap Listesi</h3>
                             </div>
                             <div class="card-body">

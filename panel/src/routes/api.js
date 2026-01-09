@@ -85,22 +85,42 @@ router.post('/tasks/:id/result', async (req, res) => {
 
         // Gönderi durumunu güncelle
         if (task.taskType === 'post_action' && task.postTaskId) {
-            const failedCount = await prisma.botTask.count({
-                where: { postTaskId: task.postTaskId, status: 'failed' }
-            });
-            const completedCount = await prisma.botTask.count({
-                where: { postTaskId: task.postTaskId, status: 'completed' }
+            // Tamamlanan görevin action tipini bul (result'ta saklanıyor)
+            const action = task.result; // like, comment, share
+
+            // done sayacını artır
+            const updateData = {};
+            if (action === 'like') updateData.doneLikes = { increment: 1 };
+            else if (action === 'comment') updateData.doneComments = { increment: 1 };
+            else if (action === 'share') updateData.doneShares = { increment: 1 };
+
+            if (status === 'completed' && Object.keys(updateData).length > 0) {
+                await prisma.postTask.update({
+                    where: { id: task.postTaskId },
+                    data: updateData
+                });
+            }
+
+            // Tüm görevler tamamlandı mı kontrol et
+            const pendingCount = await prisma.botTask.count({
+                where: { postTaskId: task.postTaskId, status: { in: ['pending', 'processing'] } }
             });
 
-            if (completedCount > 0) {
+            if (pendingCount === 0) {
+                // Hedeflere ulaşıldı mı kontrol et
+                const postTask = await prisma.postTask.findUnique({ where: { id: task.postTaskId } });
+                const allDone = postTask.doneLikes >= postTask.targetLikes &&
+                    postTask.doneComments >= postTask.targetComments &&
+                    postTask.doneShares >= postTask.targetShares;
+
                 await prisma.postTask.update({
                     where: { id: task.postTaskId },
-                    data: { status: 'completed' }
+                    data: { status: allDone ? 'completed' : 'failed' }
                 });
-            } else if (failedCount > 0) {
+            } else {
                 await prisma.postTask.update({
                     where: { id: task.postTaskId },
-                    data: { status: 'failed' }
+                    data: { status: 'in_progress' }
                 });
             }
         }

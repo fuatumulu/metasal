@@ -49,6 +49,68 @@ router.post('/add', async (req, res) => {
     }
 });
 
+// Toplu hesap ekleme (kullanıcıadı:şifre formatında)
+router.post('/bulk-add', async (req, res) => {
+    const { bulkAccounts } = req.body;
+
+    if (!bulkAccounts || !bulkAccounts.trim()) {
+        const accounts = await prisma.facebookAccount.findMany({ orderBy: { createdAt: 'desc' } });
+        return res.render('accounts', { accounts, error: 'Hesap listesi boş', success: null });
+    }
+
+    try {
+        const lines = bulkAccounts.trim().split('\n');
+        let addedCount = 0;
+        let errorCount = 0;
+
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            const parts = trimmedLine.split(':');
+            if (parts.length < 2) {
+                errorCount++;
+                continue;
+            }
+
+            const username = parts[0].trim();
+            const password = parts.slice(1).join(':').trim(); // Şifrede : olabilir
+
+            if (!username || !password) {
+                errorCount++;
+                continue;
+            }
+
+            try {
+                const account = await prisma.facebookAccount.create({
+                    data: { username, password }
+                });
+
+                // Login görevi oluştur
+                await prisma.botTask.create({
+                    data: {
+                        accountId: account.id,
+                        taskType: 'login',
+                        status: 'pending'
+                    }
+                });
+
+                addedCount++;
+            } catch (e) {
+                errorCount++;
+            }
+        }
+
+        const accounts = await prisma.facebookAccount.findMany({ orderBy: { createdAt: 'desc' } });
+        const message = `${addedCount} hesap eklendi` + (errorCount > 0 ? `, ${errorCount} hata` : '');
+        res.render('accounts', { accounts, error: null, success: message });
+    } catch (error) {
+        console.error('Bulk add error:', error);
+        const accounts = await prisma.facebookAccount.findMany({ orderBy: { createdAt: 'desc' } });
+        res.render('accounts', { accounts, error: 'Toplu ekleme başarısız', success: null });
+    }
+});
+
 // Hesap silme
 router.post('/delete/:id', async (req, res) => {
     const { id } = req.params;

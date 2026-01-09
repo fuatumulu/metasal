@@ -91,15 +91,27 @@ async function processTask(task) {
                         }
                     }
 
-                    switch (task.postTask.action) {
+                    // Kelimeye göre gönderi bul
+                    const { findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
+                    const found = await findPostByKeyword(page, task.postTask.searchKeyword);
+
+                    if (!found) {
+                        await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı');
+                        return;
+                    }
+
+                    // Action tipini result'tan al
+                    const action = task.result; // like, comment, share
+
+                    switch (action) {
                         case 'like':
-                            success = await likePost(page, task.postTask.postUrl);
+                            success = await likeCurrentPost(page);
                             break;
                         case 'comment':
-                            success = await commentPost(page, task.postTask.postUrl, task.postTask.commentText);
+                            success = await commentCurrentPost(page, task.postTask.commentText);
                             break;
                         case 'share':
-                            success = await sharePost(page, task.postTask.postUrl);
+                            success = await shareCurrentPost(page);
                             break;
                     }
                 }

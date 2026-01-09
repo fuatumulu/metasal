@@ -36,13 +36,18 @@ model Target {
 }
 
 model PostTask {
-  id          Int       @id @default(autoincrement())
-  postUrl     String
-  action      String    // like, comment, share
-  commentText String?   @db.Text
-  status      String    @default("pending") // pending, completed, failed
-  createdAt   DateTime  @default(now())
-  tasks       BotTask[]
+  id            Int       @id @default(autoincrement())
+  searchKeyword String    // Gönderide aranacak kelime öbeği
+  targetLikes   Int       @default(0)  // Hedef beğeni sayısı
+  targetComments Int      @default(0)  // Hedef yorum sayısı  
+  targetShares  Int       @default(0)  // Hedef paylaşım sayısı
+  commentText   String?   @db.Text     // Yorum metni (yorumlar için)
+  doneLikes     Int       @default(0)  // Yapılan beğeni sayısı
+  doneComments  Int       @default(0)  // Yapılan yorum sayısı
+  doneShares    Int       @default(0)  // Yapılan paylaşım sayısı
+  status        String    @default("pending") // pending, in_progress, completed, failed
+  createdAt     DateTime  @default(now())
+  tasks         BotTask[]
 }
 
 model BotTask {

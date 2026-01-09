@@ -50,33 +50,41 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h3>Yeni Gönderi Görevi Ekle</h3>
+                                <h3>Yeni Gönderi Görevi</h3>
                             </div>
                             <div class="card-body">
                                 <form action="/posts/add" method="POST" class="post-form">
+                                    <div class="form-group">
+                                        <label>Arama Kelimesi</label>
+                                        <input type="text" name="searchKeyword"
+                                            placeholder="Gönderide aranacak kelime veya cümle" required>
+                                        <small style="color:#666">Bot, Facebook'ta bu kelimeyi içeren gönderiyi
+                                            bulacak</small>
+                                    </div>
+
                                     <div class="form-row">
                                         <div class="form-group">
-                                            <label>Gönderi URL</label>
-                                            <input type="url" name="postUrl" placeholder="Facebook gönderi URL'si"
-                                                required>
+                                            <label>👍 Beğeni Hedefi</label>
+                                            <input type="number" name="targetLikes" min="0" value="0" placeholder="0">
                                         </div>
                                         <div class="form-group">
-                                            <label>Eylem</label>
-                                            <select name="action" id="actionSelect" required
-                                                onchange="toggleCommentField()">
-                                                <option value="">Seçin</option>
-                                                <option value="like">👍 Beğen</option>
-                                                <option value="comment">💬 Yorum Yap</option>
-                                                <option value="share">🔄 Paylaş</option>
-                                            </select>
+                                            <label>💬 Yorum Hedefi</label>
+                                            <input type="number" name="targetComments" min="0" value="0"
+                                                placeholder="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>🔄 Paylaşım Hedefi</label>
+                                            <input type="number" name="targetShares" min="0" value="0" placeholder="0">
                                         </div>
                                     </div>
-                                    <div class="form-group" id="commentGroup" style="display:none">
-                                        <label>Yorum Metni</label>
+
+                                    <div class="form-group">
+                                        <label>Yorum Metni (yorum hedefi varsa zorunlu)</label>
                                         <textarea name="commentText" rows="3"
-                                            placeholder="Yazılacak yorum..."></textarea>
+                                            placeholder="Yapılacak yorum metni..."></textarea>
                                     </div>
-                                    <button type="submit" class="btn btn-primary">Görevi Ekle</button>
+
+                                    <button type="submit" class="btn btn-primary">Görevi Oluştur</button>
                                 </form>
                             </div>
                         </div>
@@ -90,9 +98,10 @@
                                     <thead>
                                         <tr>
                                             <th>ID</th>
-                                            <th>URL</th>
-                                            <th>Eylem</th>
-                                            <th>Yorum</th>
+                                            <th>Arama Kelimesi</th>
+                                            <th>👍 Beğeni</th>
+                                            <th>💬 Yorum</th>
+                                            <th>🔄 Paylaşım</th>
                                             <th>Durum</th>
                                             <th>İşlemler</th>
                                         </tr>
@@ -100,7 +109,7 @@
                                     <tbody>
                                         <% if (posts.length===0) { %>
                                             <tr>
-                                                <td colspan="6" class="text-center">Henüz gönderi görevi eklenmedi</td>
+                                                <td colspan="7" class="text-center">Henüz gönderi görevi eklenmedi</td>
                                             </tr>
                                             <% } %>
                                                 <% posts.forEach(function(post) { %>
@@ -108,30 +117,30 @@
                                                         <td>
                                                             <%= post.id %>
                                                         </td>
-                                                        <td><a href="<%= post.postUrl %>" target="_blank" class="link">
-                                                                <%= post.postUrl.substring(0, 40) %>...
-                                                            </a></td>
                                                         <td>
-                                                            <%= post.action==='like' ? '👍 Beğen' :
-                                                                post.action==='comment' ? '💬 Yorum' : '🔄 Paylaş' %>
+                                                            <%= post.searchKeyword.length> 30 ?
+                                                                post.searchKeyword.substring(0, 30) + '...' :
+                                                                post.searchKeyword %>
                                                         </td>
                                                         <td>
-                                                            <%= post.commentText ? post.commentText.substring(0, 30)
-                                                                + '...' : '-' %>
+                                                            <%= post.doneLikes %>/<%= post.targetLikes %>
+                                                        </td>
+                                                        <td>
+                                                            <%= post.doneComments %>/<%= post.targetComments %>
+                                                        </td>
+                                                        <td>
+                                                            <%= post.doneShares %>/<%= post.targetShares %>
                                                         </td>
                                                         <td>
                                                             <span
-                                                                class="status-badge <%= post.status === 'completed' ? 'success' : post.status === 'failed' ? 'danger' : 'warning' %>">
+                                                                class="status-badge <%= post.status === 'completed' ? 'success' : post.status === 'failed' ? 'danger' : post.status === 'in_progress' ? 'info' : 'warning' %>">
                                                                 <%= post.status==='completed' ? 'Tamamlandı' :
-                                                                    post.status==='failed' ? 'Başarısız' : 'Bekliyor' %>
+                                                                    post.status==='failed' ? 'Başarısız' :
+                                                                    post.status==='in_progress' ? 'Devam Ediyor'
+                                                                    : 'Bekliyor' %>
                                                             </span>
                                                         </td>
                                                         <td class="actions">
-                                                            <form action="/posts/retry/<%= post.id %>" method="POST"
-                                                                style="display:inline">
-                                                                <button type="submit"
-                                                                    class="btn btn-sm btn-warning">Yeniden Dene</button>
-                                                            </form>
                                                             <form action="/posts/delete/<%= post.id %>" method="POST"
                                                                 style="display:inline"
                                                                 onsubmit="return confirm('Bu görevi silmek istediğinize emin misiniz?')">
@@ -146,14 +155,6 @@
                             </div>
                         </div>
     </main>
-
-    <script>
-        function toggleCommentField() {
-            var select = document.getElementById('actionSelect');
-            var commentGroup = document.getElementById('commentGroup');
-            commentGroup.style.display = select.value === 'comment' ? 'block' : 'none';
-        }
-    </script>
 </body>
 
 </html>
