@@ -176,7 +176,7 @@ app.listen(PORT, () => {
     console.log('========================================');
     console.log(`MetaSal Bot API çalışıyor: port ${PORT}`);
     console.log(`Panel URL: ${PANEL_URL}`);
-    console.log(`Vision API: ${process.env.VISION_API_URL || 'http://localhost:35599'}`);
+    console.log(`Vision Local API: ${process.env.VISION_LOCAL_API || 'http://127.0.0.1:3030'}`);
     console.log('========================================\n');
 
     workerLoop().catch(console.error);

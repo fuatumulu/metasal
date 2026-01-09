@@ -96,10 +96,39 @@ async function startProfile(folderId, profileId) {
             return null;
         }
 
-        const browser = await puppeteer.connect({
-            browserURL: `http://127.0.0.1:${port}`,
-            defaultViewport: null
-        });
+        console.log(`Profil başlatıldı, port: ${port}. Bağlantı kuruluyor...`);
+
+        // Tarayıcının hazır olması için kısa bir bekleme ve retry mekanizması
+        let browser = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            try {
+                // Tarayıcı penceresinin açılması ve portun dinlemeye başlaması için bekle
+                const delay = 1000 + (attempts * 1000);
+                console.log(`Deneme ${attempts}/${maxAttempts}: ${delay}ms bekleniyor...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+
+                // Önce 127.0.0.1 dene, başarısız olursa localhost dene
+                const targetHost = attempts % 2 === 0 ? 'localhost' : '127.0.0.1';
+                console.log(`Bağlanılıyor: http://${targetHost}:${port}...`);
+
+                browser = await puppeteer.connect({
+                    browserURL: `http://${targetHost}:${port}`,
+                    defaultViewport: null
+                });
+
+                if (browser) {
+                    console.log('Bağlantı başarılı!');
+                    break;
+                }
+            } catch (err) {
+                console.log(`Bağlantı denemesi ${attempts}/${maxAttempts} başarısız: ${err.message}`);
+                if (attempts >= maxAttempts) throw err;
+            }
+        }
 
         return browser;
     } catch (error) {
