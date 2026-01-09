@@ -45,6 +45,7 @@ model Target {
   url          String
   name         String?
   status       String               @default("pending") // pending, completed, failed
+  isActive     Boolean              @default(true)
   createdAt    DateTime             @default(now())
   likedBy      ProfileLikedTarget[]
   tasks        BotTask[]

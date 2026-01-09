@@ -67,7 +67,7 @@ router.post('/optimize', async (req, res) => {
     try {
         // 1. Tüm aktif profilleri ve hedefleri al
         const profiles = await prisma.visionProfile.findMany({ where: { status: 'active' } });
-        const targets = await prisma.target.findMany();
+        const targets = await prisma.target.findMany({ where: { isActive: true } });
 
         let createdCount = 0;
 

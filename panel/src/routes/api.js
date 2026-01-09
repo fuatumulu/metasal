@@ -182,7 +182,7 @@ router.post('/profiles/push', async (req, res) => {
 
                 // YENİ PROFİL İÇİN OTOMATİK GÖREV OLUŞTURMA
                 // Mevcut tüm aktif hedefleri bul
-                const targets = await prisma.target.findMany();
+                const targets = await prisma.target.findMany({ where: { isActive: true } });
                 for (const target of targets) {
                     // Mükerrer kontrolü (Hoş, yeni profil olduğu için zaten yoktur ama güvenlik için)
                     await prisma.botTask.create({

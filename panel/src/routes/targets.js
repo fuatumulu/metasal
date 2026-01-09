@@ -79,6 +79,30 @@ router.post('/delete/:id', async (req, res) => {
     }
 });
 
+// Hedef durumunu değiştir (aktif/pasif)
+router.post('/toggle/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const target = await prisma.target.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (target) {
+            await prisma.target.update({
+                where: { id: parseInt(id) },
+                data: {
+                    isActive: !target.isActive
+                }
+            });
+        }
+        res.redirect('/targets');
+    } catch (error) {
+        console.error('Target toggle error:', error);
+        res.redirect('/targets');
+    }
+});
+
 // Yeniden beğen (Sadece bu hedefi henüz beğenmemiş olan aktif profiller için)
 router.post('/retry/:id', async (req, res) => {
     const { id } = req.params;

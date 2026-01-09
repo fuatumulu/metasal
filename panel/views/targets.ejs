@@ -118,14 +118,28 @@
                                                             </strong>
                                                         </td>
                                                         <td>
-                                                            <span
-                                                                class="status-badge <%= target.status === 'completed' ? 'success' : target.status === 'failed' ? 'danger' : 'warning' %>">
-                                                                <%= target.status==='completed' ? 'Beğenildi' :
-                                                                    target.status==='failed' ? 'Başarısız' : 'Bekliyor'
-                                                                    %>
-                                                            </span>
+                                                            <div style="display:flex; flex-direction:column; gap:5px">
+                                                                <span
+                                                                    class="status-badge <%= target.status === 'completed' ? 'success' : target.status === 'failed' ? 'danger' : 'warning' %>">
+                                                                    <%= target.status==='completed' ? 'Beğenildi' :
+                                                                        target.status==='failed' ? 'Başarısız'
+                                                                        : 'Bekliyor' %>
+                                                                </span>
+                                                                <span
+                                                                    class="status-badge <%= target.isActive ? 'success' : 'secondary' %>"
+                                                                    style="font-size:0.7rem; <%= !target.isActive ? 'background:#ccc;color:#333' : '' %>">
+                                                                    <%= target.isActive ? 'Aktif' : 'Pasif' %>
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                         <td class="actions">
+                                                            <form action="/targets/toggle/<%= target.id %>"
+                                                                method="POST" style="display:inline">
+                                                                <button type="submit"
+                                                                    class="btn btn-sm <%= target.isActive ? 'btn-secondary' : 'btn-success' %>">
+                                                                    <%= target.isActive ? 'Pasif Et' : 'Aktif Et' %>
+                                                                </button>
+                                                            </form>
                                                             <form action="/targets/retry/<%= target.id %>" method="POST"
                                                                 style="display:inline">
                                                                 <button type="submit"
