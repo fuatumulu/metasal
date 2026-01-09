@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 
 // Gönderi görevi ekleme
 router.post('/add', async (req, res) => {
-    const { searchKeyword, targetLikes, targetComments, targetShares, commentText } = req.body;
+    const { searchKeyword, targetLikes, targetComments, targetShares } = req.body;
 
     if (!searchKeyword || !searchKeyword.trim()) {
         const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
@@ -35,9 +35,13 @@ router.post('/add', async (req, res) => {
         return res.render('posts', { posts, error: 'En az bir hedef sayısı girilmeli', success: null });
     }
 
-    if (comments > 0 && (!commentText || !commentText.trim())) {
-        const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
-        return res.render('posts', { posts, error: 'Yorum hedefi için yorum metni gerekli', success: null });
+    // Yorum hedefi varsa yorum havuzunda yorum olmalı
+    if (comments > 0) {
+        const commentCount = await prisma.comment.count();
+        if (commentCount === 0) {
+            const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
+            return res.render('posts', { posts, error: 'Yorum hedefi için önce Yorumlar sayfasından yorum ekleyin', success: null });
+        }
     }
 
     try {
@@ -46,8 +50,7 @@ router.post('/add', async (req, res) => {
                 searchKeyword: searchKeyword.trim(),
                 targetLikes: likes,
                 targetComments: comments,
-                targetShares: shares,
-                commentText: comments > 0 ? commentText.trim() : null
+                targetShares: shares
             }
         });
 

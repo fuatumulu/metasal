@@ -256,12 +256,18 @@ body {
   display: flex;
   gap: 15px;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
 }
 
 .inline-form .form-group {
   flex: 1;
   min-width: 200px;
+  margin-bottom: 0;
+}
+
+.inline-form .btn {
+  height: 42px;
+  flex-shrink: 0;
 }
 
 .form-group {
@@ -447,21 +453,21 @@ body {
   .sidebar {
     width: 70px;
   }
-  
+
   .sidebar-header h2,
   .nav-links li a span,
   .logout-btn span {
     display: none;
   }
-  
+
   .content {
     margin-left: 70px;
   }
-  
+
   .inline-form {
     flex-direction: column;
   }
-  
+
   .form-row {
     flex-direction: column;
   }

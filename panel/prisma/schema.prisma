@@ -41,13 +41,19 @@ model PostTask {
   targetLikes   Int       @default(0)  // Hedef beğeni sayısı
   targetComments Int      @default(0)  // Hedef yorum sayısı  
   targetShares  Int       @default(0)  // Hedef paylaşım sayısı
-  commentText   String?   @db.Text     // Yorum metni (yorumlar için)
   doneLikes     Int       @default(0)  // Yapılan beğeni sayısı
   doneComments  Int       @default(0)  // Yapılan yorum sayısı
   doneShares    Int       @default(0)  // Yapılan paylaşım sayısı
   status        String    @default("pending") // pending, in_progress, completed, failed
   createdAt     DateTime  @default(now())
   tasks         BotTask[]
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  text      String   @db.Text
+  usedCount Int      @default(0)  // Kaç kez kullanıldı
+  createdAt DateTime @default(now())
 }
 
 model BotTask {
@@ -64,3 +70,4 @@ model BotTask {
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 }
+

@@ -26,6 +26,9 @@
             <li class="active">
                 <a href="/posts">📝 Gönderiler</a>
             </li>
+            <li>
+                <a href="/comments">💬 Yorumlar</a>
+            </li>
         </ul>
         <div class="sidebar-footer">
             <a href="/logout" class="logout-btn">🚪 Çıkış</a>
@@ -78,10 +81,10 @@
                                         </div>
                                     </div>
 
-                                    <div class="form-group">
-                                        <label>Yorum Metni (yorum hedefi varsa zorunlu)</label>
-                                        <textarea name="commentText" rows="3"
-                                            placeholder="Yapılacak yorum metni..."></textarea>
+                                    <div class="form-group" style="margin-top:10px">
+                                        <small style="color:#666">💡 Yorum hedefi için önce <a
+                                                href="/comments">Yorumlar</a> sayfasından yorum ekleyin. Bot rastgele
+                                            seçecek.</small>
                                     </div>
 
                                     <button type="submit" class="btn btn-primary">Görevi Oluştur</button>

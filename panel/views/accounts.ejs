@@ -26,6 +26,9 @@
             <li>
                 <a href="/posts">📝 Gönderiler</a>
             </li>
+            <li>
+                <a href="/comments">💬 Yorumlar</a>
+            </li>
         </ul>
         <div class="sidebar-footer">
             <a href="/logout" class="logout-btn">🚪 Çıkış</a>
@@ -50,25 +53,7 @@
 
                         <div class="card">
                             <div class="card-header">
-                                <h3>Yeni Hesap Ekle</h3>
-                            </div>
-                            <div class="card-body">
-                                <form action="/accounts/add" method="POST" class="inline-form">
-                                    <div class="form-group">
-                                        <input type="text" name="username"
-                                            placeholder="Facebook kullanıcı adı veya e-posta" required>
-                                    </div>
-                                    <div class="form-group">
-                                        <input type="password" name="password" placeholder="Şifre" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary">Ekle</button>
-                                </form>
-                            </div>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>Toplu Hesap Ekle</h3>
+                                <h3>Hesap Ekle</h3>
                             </div>
                             <div class="card-body">
                                 <form action="/accounts/bulk-add" method="POST">

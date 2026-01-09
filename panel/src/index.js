@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const accountsRoutes = require('./routes/accounts');
 const targetsRoutes = require('./routes/targets');
 const postsRoutes = require('./routes/posts');
+const commentsRoutes = require('./routes/comments');
 const apiRoutes = require('./routes/api');
 
 const { requireAuth, requireSetup } = require('./middleware/auth');
@@ -48,6 +49,7 @@ app.use('/', authRoutes);
 app.use('/accounts', requireSetup, requireAuth, accountsRoutes);
 app.use('/targets', requireSetup, requireAuth, targetsRoutes);
 app.use('/posts', requireSetup, requireAuth, postsRoutes);
+app.use('/comments', requireSetup, requireAuth, commentsRoutes);
 app.use('/api', apiRoutes);
 
 // Dashboard
