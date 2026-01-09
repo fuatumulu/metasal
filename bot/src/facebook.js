@@ -117,55 +117,134 @@ async function login(page, username, password, cookie = null) {
 }
 
 /**
- * Sayfa veya grubu beğen
+ * Sayfa veya grubu beğen/takip et
  */
 async function likeTarget(page, targetUrl, targetType) {
     try {
-        console.log(`Hedef beğeniliyor: ${targetUrl}`);
+        console.log(`Hedef inceleniyor: ${targetUrl}`);
 
         await page.goto(targetUrl, { waitUntil: 'networkidle2' });
         await sleep(ACTION_DELAY);
 
-        // Sayfa için Like butonu
+        // Sayfa için Like/Follow butonu
         if (targetType === 'page') {
-            const likeBtn = await page.evaluateHandle(() => {
-                const buttons = Array.from(document.querySelectorAll('[role="button"]'));
-                return buttons.find(btn => {
-                    const text = btn.textContent.toLowerCase();
-                    return text.includes('like') || text.includes('beğen') || text.includes('follow') || text.includes('takip');
+            const result = await page.evaluate(() => {
+                // Aranacak metinler ve durumlar
+                const targets = {
+                    action: ['follow', 'takip et', 'like', 'beğen'],
+                    active: ['following', 'takip ediliyor', 'liked', 'beğendin']
+                };
+
+                const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
+
+                // Önce zaten aktif mi kontrol et
+                const activeElement = allElements.find(el => {
+                    const text = el.textContent.trim().toLowerCase();
+                    return targets.active.some(t => text === t);
                 });
+
+                if (activeElement) {
+                    return { status: 'already_active' };
+                }
+
+                // Aktif değilse buton ara
+                const actionElement = allElements.find(el => {
+                    const text = el.textContent.trim().toLowerCase();
+                    return targets.action.some(t => text === t);
+                });
+
+                if (actionElement) {
+                    // Bulunan elementin en yakın tıklanabilir üst elementini bul (veya kendisi)
+                    const clickable = actionElement.closest('[role="button"]') ||
+                        actionElement.closest('div[tabindex="0"]') ||
+                        actionElement;
+
+                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Tıklama işlemini evaluate içinde yapmamak daha güvenli (Puppeteer'ın click() fonksyionunu kullanacağız)
+                    // Ama burada görsel bir geri bildirim için highlight yapabiliriz
+                    return { status: 'found', text: actionElement.textContent.trim() };
+                }
+
+                return { status: 'not_found' };
             });
 
-            if (likeBtn) {
-                await likeBtn.asElement()?.click();
-                await sleep(2000);
-                console.log('Sayfa beğenildi');
+            if (result.status === 'already_active') {
+                console.log('Zaten takip ediliyor/beğenilmiş. İşlem atlanıyor.');
                 return true;
+            }
+
+            if (result.status === 'found') {
+                console.log(`"${result.text}" butonu bulundu, tıklanıyor...`);
+
+                // Butonu Puppeteer ile bul ve tıkla
+                const element = await page.evaluateHandle((text) => {
+                    const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent.trim() === text);
+                    return el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                }, result.text);
+
+                if (element) {
+                    await element.asElement()?.click();
+                    await sleep(2000);
+                    console.log('İşlem başarıyla gerçekleştirildi.');
+                    return true;
+                }
             }
         }
 
         // Grup için Katıl butonu
         if (targetType === 'group') {
-            const joinBtn = await page.evaluateHandle(() => {
-                const buttons = Array.from(document.querySelectorAll('[role="button"]'));
-                return buttons.find(btn => {
-                    const text = btn.textContent.toLowerCase();
-                    return text.includes('join') || text.includes('katıl');
+            const result = await page.evaluate(() => {
+                const targets = {
+                    action: ['join group', 'gruba katıl', 'join', 'katıl'],
+                    active: ['joined', 'katıldın', 'cancel request', 'isteği iptal et']
+                };
+
+                const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
+
+                const activeElement = allElements.find(el => {
+                    const text = el.textContent.trim().toLowerCase();
+                    return targets.active.some(t => text === t);
                 });
+
+                if (activeElement) return { status: 'already_active' };
+
+                const actionElement = allElements.find(el => {
+                    const text = el.textContent.trim().toLowerCase();
+                    return targets.action.some(t => text === t);
+                });
+
+                if (actionElement) {
+                    return { status: 'found', text: actionElement.textContent.trim() };
+                }
+
+                return { status: 'not_found' };
             });
 
-            if (joinBtn) {
-                await joinBtn.asElement()?.click();
-                await sleep(2000);
-                console.log('Gruba katılım isteği gönderildi');
+            if (result.status === 'already_active') {
+                console.log('Zaten gruptasınız veya istek gönderilmiş.');
                 return true;
+            }
+
+            if (result.status === 'found') {
+                console.log(`"${result.text}" butonu bulundu, gruba katılınıyor...`);
+                const element = await page.evaluateHandle((text) => {
+                    const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent.trim() === text);
+                    return el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                }, result.text);
+
+                if (element) {
+                    await element.asElement()?.click();
+                    await sleep(2000);
+                    console.log('Katılım isteği gönderildi.');
+                    return true;
+                }
             }
         }
 
-        console.log('Beğen/Katıl butonu bulunamadı');
+        console.log('Uygun buton (Follow/Like/Join) bulunamadı.');
         return false;
     } catch (error) {
-        console.error('Hedef beğenme hatası:', error.message);
+        console.error('Etkileşim hatası:', error.message);
         return false;
     }
 }
