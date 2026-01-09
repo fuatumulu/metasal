@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaSal - Profiller</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>MetaSal</h2>
+        </div>
+        <ul class="nav-links">
+            <li>
+                <a href="/dashboard">📊 Dashboard</a>
+            </li>
+            <li class="active">
+                <a href="/profiles">🖥️ Profiller</a>
+            </li>
+            <li>
+                <a href="/targets">🎯 Hedefler</a>
+            </li>
+            <li>
+                <a href="/posts">📝 Gönderiler</a>
+            </li>
+            <li>
+                <a href="/comments">💬 Yorumlar</a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <a href="/logout" class="logout-btn">🚪 Çıkış</a>
+        </div>
+    </nav>
+
+    <main class="content">
+        <div class="page-header">
+            <h1>Vision Profilleri</h1>
+            <p style="color:#666;margin-top:5px">Vision Antidetect Browser'daki profiller. Kullanıcı zaten giriş yapmış
+                olmalı.</p>
+        </div>
+
+        <% if (error) { %>
+            <div class="alert alert-error">
+                <%= error %>
+            </div>
+            <% } %>
+                <% if (success) { %>
+                    <div class="alert alert-success">
+                        <%= success %>
+                    </div>
+                    <% } %>
+
+                        <div class="card">
+                            <div class="card-header"
+                                style="display:flex;justify-content:space-between;align-items:center">
+                                <h3>Profil Senkronizasyonu</h3>
+                                <form action="/profiles/sync" method="POST">
+                                    <button type="submit" class="btn btn-primary">🔄 Vision'dan Senkronize Et</button>
+                                </form>
+                            </div>
+                            <div class="card-body">
+                                <small style="color:#666">
+                                    Vision Antidetect Browser'daki profilleri çeker. Her profil için Facebook'a manuel
+                                    giriş yapılmış olmalıdır.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Profil Listesi (<%= profiles.length %> adet)</h3>
+                            </div>
+                            <div class="card-body">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Profil Adı</th>
+                                            <th>Vision ID</th>
+                                            <th>Durum</th>
+                                            <th>Beğenilen</th>
+                                            <th>Görevler</th>
+                                            <th>Son Senkr.</th>
+                                            <th>İşlemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% if (profiles.length===0) { %>
+                                            <tr>
+                                                <td colspan="8" class="text-center">
+                                                    Henüz profil yok. "Senkronize Et" butonuna basın.
+                                                </td>
+                                            </tr>
+                                            <% } %>
+                                                <% profiles.forEach(function(profile) { %>
+                                                    <tr>
+                                                        <td>
+                                                            <%= profile.id %>
+                                                        </td>
+                                                        <td><strong>
+                                                                <%= profile.name %>
+                                                            </strong></td>
+                                                        <td>
+                                                            <code
+                                                                style="font-size:0.75rem"><%= profile.visionId.substring(0, 8) %>...</code>
+                                                        </td>
+                                                        <td>
+                                                            <span
+                                                                class="status-badge <%= profile.status === 'active' ? 'success' : 'danger' %>">
+                                                                <%= profile.status==='active' ? 'Aktif' : 'Devre Dışı'
+                                                                    %>
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <a href="/profiles/<%= profile.id %>/likes" class="link">
+                                                                <%= profile._count.likedTargets %> hedef
+                                                            </a>
+                                                        </td>
+                                                        <td>
+                                                            <%= profile._count.tasks %>
+                                                        </td>
+                                                        <td>
+                                                            <% if (profile.lastSyncedAt) { %>
+                                                                <%= new
+                                                                    Date(profile.lastSyncedAt).toLocaleString('tr-TR')
+                                                                    %>
+                                                                    <% } else { %>
+                                                                        -
+                                                                        <% } %>
+                                                        </td>
+                                                        <td class="actions">
+                                                            <form action="/profiles/toggle/<%= profile.id %>"
+                                                                method="POST" style="display:inline">
+                                                                <button type="submit"
+                                                                    class="btn btn-sm <%= profile.status === 'active' ? 'btn-warning' : 'btn-primary' %>">
+                                                                    <%= profile.status==='active' ? 'Devre Dışı'
+                                                                        : 'Aktifleştir' %>
+                                                                </button>
+                                                            </form>
+                                                            <form action="/profiles/delete/<%= profile.id %>"
+                                                                method="POST" style="display:inline"
+                                                                onsubmit="return confirm('Bu profili silmek istediğinize emin misiniz?')">
+                                                                <button type="submit"
+                                                                    class="btn btn-sm btn-danger">Sil</button>
+                                                            </form>
+                                                        </td>
+                                                    </tr>
+                                                    <% }); %>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+    </main>
+</body>
+
+</html>

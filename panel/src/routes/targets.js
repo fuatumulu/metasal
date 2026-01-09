@@ -8,7 +8,12 @@ const prisma = new PrismaClient();
 router.get('/', async (req, res) => {
     try {
         const targets = await prisma.target.findMany({
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: {
+                _count: {
+                    select: { likedBy: true }
+                }
+            }
         });
         res.render('targets', { targets, error: null, success: null });
     } catch (error) {
@@ -31,15 +36,15 @@ router.post('/add', async (req, res) => {
             data: { type, url, name: name || null }
         });
 
-        // Tüm aktif hesaplar için beğeni görevi oluştur
-        const accounts = await prisma.facebookAccount.findMany({
-            where: { status: 'logged_in' }
+        // Tüm aktif profiller için beğeni görevi oluştur
+        const profiles = await prisma.visionProfile.findMany({
+            where: { status: 'active' }
         });
 
-        for (const account of accounts) {
+        for (const profile of profiles) {
             await prisma.botTask.create({
                 data: {
-                    accountId: account.id,
+                    profileId: profile.id,
                     taskType: 'like_target',
                     targetId: target.id,
                     status: 'pending'
@@ -47,8 +52,11 @@ router.post('/add', async (req, res) => {
             });
         }
 
-        const targets = await prisma.target.findMany({ orderBy: { createdAt: 'desc' } });
-        res.render('targets', { targets, error: null, success: 'Hedef eklendi' });
+        const targets = await prisma.target.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { likedBy: true } } }
+        });
+        res.render('targets', { targets, error: null, success: `Hedef eklendi, ${profiles.length} profil için görev oluşturuldu.` });
     } catch (error) {
         console.error('Target add error:', error);
         const targets = await prisma.target.findMany({ orderBy: { createdAt: 'desc' } });
@@ -71,29 +79,48 @@ router.post('/delete/:id', async (req, res) => {
     }
 });
 
-// Yeniden beğen
+// Yeniden beğen (Sadece bu hedefi henüz beğenmemiş olan aktif profiller için)
 router.post('/retry/:id', async (req, res) => {
     const { id } = req.params;
+    const targetId = parseInt(id);
 
     try {
-        await prisma.target.update({
-            where: { id: parseInt(id) },
-            data: { status: 'pending' }
+        // Bu hedefi zaten beğenmiş profilleri bul
+        const alreadyLiked = await prisma.profileLikedTarget.findMany({
+            where: { targetId },
+            select: { profileId: true }
+        });
+        const likedProfileIds = alreadyLiked.map(al => al.profileId);
+
+        // Henüz beğenmemiş aktif profilleri bul
+        const profilesToTask = await prisma.visionProfile.findMany({
+            where: {
+                status: 'active',
+                id: { notIn: likedProfileIds }
+            }
         });
 
-        const accounts = await prisma.facebookAccount.findMany({
-            where: { status: 'logged_in' }
-        });
-
-        for (const account of accounts) {
-            await prisma.botTask.create({
-                data: {
-                    accountId: account.id,
+        for (const profile of profilesToTask) {
+            // Bekleyen aynı görev varsa mükerrer oluşturma
+            const existingTask = await prisma.botTask.findFirst({
+                where: {
+                    profileId: profile.id,
                     taskType: 'like_target',
-                    targetId: parseInt(id),
+                    targetId: targetId,
                     status: 'pending'
                 }
             });
+
+            if (!existingTask) {
+                await prisma.botTask.create({
+                    data: {
+                        profileId: profile.id,
+                        taskType: 'like_target',
+                        targetId: targetId,
+                        status: 'pending'
+                    }
+                });
+            }
         }
 
         res.redirect('/targets');

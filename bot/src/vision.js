@@ -17,23 +17,6 @@ async function listProfiles() {
 }
 
 /**
- * Yeni profil oluştur
- */
-async function createProfile(name) {
-    try {
-        const response = await axios.post(`${VISION_API_URL}/api/profile/create`, {
-            name,
-            os: 'mac',
-            browser: 'chrome'
-        });
-        return response.data.uuid || null;
-    } catch (error) {
-        console.error('Profil oluşturma hatası:', error.message);
-        return null;
-    }
-}
-
-/**
  * Profili başlat ve browser bağlantısı al
  */
 async function startProfile(profileId) {
@@ -70,28 +53,8 @@ async function stopProfile(profileId) {
     }
 }
 
-/**
- * Hesap için profil al veya oluştur
- */
-async function getOrCreateProfile(accountId, visionProfileId) {
-    // Mevcut profil varsa kullan
-    if (visionProfileId) {
-        const profiles = await listProfiles();
-        const exists = profiles.find(p => p.uuid === visionProfileId);
-        if (exists) {
-            return visionProfileId;
-        }
-    }
-
-    // Yeni profil oluştur
-    const newProfileId = await createProfile(`fb_account_${accountId}`);
-    return newProfileId;
-}
-
 module.exports = {
     listProfiles,
-    createProfile,
     startProfile,
-    stopProfile,
-    getOrCreateProfile
+    stopProfile
 };

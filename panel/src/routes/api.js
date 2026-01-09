@@ -10,7 +10,7 @@ router.get('/tasks/pending', async (req, res) => {
         const task = await prisma.botTask.findFirst({
             where: { status: 'pending' },
             include: {
-                account: true,
+                profile: true,
                 target: true,
                 postTask: true
             },
@@ -47,25 +47,32 @@ router.post('/tasks/:id/result', async (req, res) => {
         const task = await prisma.botTask.update({
             where: { id: parseInt(id) },
             data: { status, result: result || null },
-            include: { account: true, target: true, postTask: true }
+            include: { profile: true, target: true, postTask: true }
         });
 
-        // Hesap login durumunu güncelle
-        if (task.taskType === 'login') {
-            await prisma.facebookAccount.update({
-                where: { id: task.accountId },
-                data: {
-                    status: status === 'completed' ? 'logged_in' : 'failed',
-                    lastChecked: new Date()
-                }
-            });
+        // Hedef beğeni başarılıysa ProfileLikedTarget ekle
+        if (task.taskType === 'like_target' && status === 'completed' && task.targetId) {
+            try {
+                await prisma.profileLikedTarget.upsert({
+                    where: {
+                        profileId_targetId: {
+                            profileId: task.profileId,
+                            targetId: task.targetId
+                        }
+                    },
+                    update: {},
+                    create: {
+                        profileId: task.profileId,
+                        targetId: task.targetId
+                    }
+                });
+            } catch (e) {
+                console.error('ProfileLikedTarget update error:', e);
+            }
         }
 
-        // Hedef durumunu güncelle
+        // Hedef durumunu güncelle (Genel durum)
         if (task.taskType === 'like_target' && task.targetId) {
-            const failedCount = await prisma.botTask.count({
-                where: { targetId: task.targetId, status: 'failed' }
-            });
             const completedCount = await prisma.botTask.count({
                 where: { targetId: task.targetId, status: 'completed' }
             });
@@ -73,22 +80,24 @@ router.post('/tasks/:id/result', async (req, res) => {
             if (completedCount > 0) {
                 await prisma.target.update({
                     where: { id: task.targetId },
-                    data: { status: 'liked' }
-                });
-            } else if (failedCount > 0) {
-                await prisma.target.update({
-                    where: { id: task.targetId },
-                    data: { status: 'failed' }
+                    data: { status: 'completed' }
                 });
             }
         }
 
         // Gönderi durumunu güncelle
         if (task.taskType === 'post_action' && task.postTaskId) {
-            // Tamamlanan görevin action tipini bul (result'ta saklanıyor)
+            // Tamamlanan görevin action tipini bul
+            // Bot action tipini report ederken result'ın sonuna ekleyebilir veya başından beri result alanında duruyor olabilir
+            // Bizim sistemimizde action tipi görev oluşturulurken result alanına yazılıyor. 
+            // Bot report ederken result alanını ezebilir. Bu yüzden action tipini bir yerde tutmamız lazım.
+            // Ama Prisma şemamızda BotTask modelinde action tipi için ayrı alan yok. 
+            // Bot'un gönderdiği JSON içindeki action'ı alalım veya görevin orijinal halinden bakalım.
+
+            // Not: BotTask.result alanını görev oluştururken action tipi için kullandık. 
+            // Bot report ederken status: 'completed' gönderdiğinde biz o action tipini biliyoruz.
             const action = task.result; // like, comment, share
 
-            // done sayacını artır
             const updateData = {};
             if (action === 'like') updateData.doneLikes = { increment: 1 };
             else if (action === 'comment') updateData.doneComments = { increment: 1 };
@@ -101,13 +110,12 @@ router.post('/tasks/:id/result', async (req, res) => {
                 });
             }
 
-            // Tüm görevler tamamlandı mı kontrol et
+            // Genel durumu kontrol et
             const pendingCount = await prisma.botTask.count({
                 where: { postTaskId: task.postTaskId, status: { in: ['pending', 'processing'] } }
             });
 
             if (pendingCount === 0) {
-                // Hedeflere ulaşıldı mı kontrol et
                 const postTask = await prisma.postTask.findUnique({ where: { id: task.postTaskId } });
                 const allDone = postTask.doneLikes >= postTask.targetLikes &&
                     postTask.doneComments >= postTask.targetComments &&
@@ -128,46 +136,6 @@ router.post('/tasks/:id/result', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('Task result error:', error);
-        res.status(500).json({ error: 'Sunucu hatası' });
-    }
-});
-
-// Hesap listesi
-router.get('/accounts', async (req, res) => {
-    try {
-        const accounts = await prisma.facebookAccount.findMany({
-            select: {
-                id: true,
-                username: true,
-                password: true,
-                status: true,
-                visionProfileId: true
-            }
-        });
-        res.json({ accounts });
-    } catch (error) {
-        console.error('Get accounts error:', error);
-        res.status(500).json({ error: 'Sunucu hatası' });
-    }
-});
-
-// Hesap durumu güncelle
-router.post('/accounts/:id/status', async (req, res) => {
-    const { id } = req.params;
-    const { status, visionProfileId } = req.body;
-
-    try {
-        await prisma.facebookAccount.update({
-            where: { id: parseInt(id) },
-            data: {
-                status,
-                visionProfileId: visionProfileId || undefined,
-                lastChecked: new Date()
-            }
-        });
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Update account status error:', error);
         res.status(500).json({ error: 'Sunucu hatası' });
     }
 });

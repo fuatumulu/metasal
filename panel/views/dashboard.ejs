@@ -18,7 +18,7 @@
                 <a href="/dashboard">📊 Dashboard</a>
             </li>
             <li>
-                <a href="/accounts">👤 Hesaplar</a>
+                <a href="/profiles">🖥️ Profiller</a>
             </li>
             <li>
                 <a href="/targets">🎯 Hedefler</a>
@@ -42,12 +42,12 @@
 
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-icon">👤</div>
+                <div class="stat-icon">🖥️</div>
                 <div class="stat-info">
                     <span class="stat-value">
-                        <%= stats.totalAccounts %>
+                        <%= stats.totalProfiles %>
                     </span>
-                    <span class="stat-label">Toplam Hesap</span>
+                    <span class="stat-label">Toplam Profil</span>
                 </div>
             </div>
 
@@ -55,19 +55,9 @@
                 <div class="stat-icon">✅</div>
                 <div class="stat-info">
                     <span class="stat-value">
-                        <%= stats.loggedInAccounts %>
+                        <%= stats.activeProfiles %>
                     </span>
-                    <span class="stat-label">Giriş Yapılan</span>
-                </div>
-            </div>
-
-            <div class="stat-card danger">
-                <div class="stat-icon">❌</div>
-                <div class="stat-info">
-                    <span class="stat-value">
-                        <%= stats.failedAccounts %>
-                    </span>
-                    <span class="stat-label">Başarısız</span>
+                    <span class="stat-label">Aktif Profil</span>
                 </div>
             </div>
 
@@ -98,6 +88,16 @@
                         <%= stats.totalPosts %>
                     </span>
                     <span class="stat-label">Gönderi Görevi</span>
+                </div>
+            </div>
+
+            <div class="stat-card info">
+                <div class="stat-icon">💬</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.totalComments %>
+                    </span>
+                    <span class="stat-label">Yorum Havuzu</span>
                 </div>
             </div>
         </div>

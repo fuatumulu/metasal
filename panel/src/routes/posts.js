@@ -45,6 +45,25 @@ router.post('/add', async (req, res) => {
     }
 
     try {
+        // En az bir hedef beğenmiş aktif profilleri bul
+        const eligibleProfiles = await prisma.visionProfile.findMany({
+            where: {
+                status: 'active',
+                likedTargets: {
+                    some: {} // En az bir tane varsa
+                }
+            }
+        });
+
+        if (eligibleProfiles.length === 0) {
+            const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
+            return res.render('posts', {
+                posts,
+                error: 'Gönderi görevleri için en az bir profilin en az bir sayfa/grup beğenmiş olması gerekir.',
+                success: null
+            });
+        }
+
         const post = await prisma.postTask.create({
             data: {
                 searchKeyword: searchKeyword.trim(),
@@ -54,18 +73,13 @@ router.post('/add', async (req, res) => {
             }
         });
 
-        // Aktif hesaplar için görevler oluştur
-        const accounts = await prisma.facebookAccount.findMany({
-            where: { status: 'logged_in' }
-        });
-
         // Toplam görev sayısını hesapla
         const totalTasks = likes + comments + shares;
         let tasksCreated = 0;
 
-        // Görevleri hesaplara dağıt
-        for (let i = 0; i < totalTasks && accounts.length > 0; i++) {
-            const account = accounts[i % accounts.length];
+        // Görevleri profillere dağıt
+        for (let i = 0; i < totalTasks; i++) {
+            const profile = eligibleProfiles[i % eligibleProfiles.length];
 
             let action = 'like';
             if (i < likes) {
@@ -78,11 +92,11 @@ router.post('/add', async (req, res) => {
 
             await prisma.botTask.create({
                 data: {
-                    accountId: account.id,
+                    profileId: profile.id,
                     taskType: 'post_action',
                     postTaskId: post.id,
                     status: 'pending',
-                    result: action // Action'ı result'ta sakla
+                    result: action // Action tipini result'ta sakla
                 }
             });
             tasksCreated++;
@@ -92,7 +106,7 @@ router.post('/add', async (req, res) => {
         res.render('posts', {
             posts,
             error: null,
-            success: `Görev oluşturuldu: ${likes} beğeni, ${comments} yorum, ${shares} paylaşım hedefi (${tasksCreated} görev queue'ye eklendi)`
+            success: `Görev oluşturuldu: ${likes} beğeni, ${comments} yorum, ${shares} paylaşım hedefi (${tasksCreated} görev ${eligibleProfiles.length} profile dağıtıldı)`
         });
     } catch (error) {
         console.error('Post add error:', error);

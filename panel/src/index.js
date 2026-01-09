@@ -6,7 +6,7 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 
 const authRoutes = require('./routes/auth');
-const accountsRoutes = require('./routes/accounts');
+const profilesRoutes = require('./routes/profiles');
 const targetsRoutes = require('./routes/targets');
 const postsRoutes = require('./routes/posts');
 const commentsRoutes = require('./routes/comments');
@@ -46,7 +46,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/', authRoutes);
-app.use('/accounts', requireSetup, requireAuth, accountsRoutes);
+app.use('/profiles', requireSetup, requireAuth, profilesRoutes);
 app.use('/targets', requireSetup, requireAuth, targetsRoutes);
 app.use('/posts', requireSetup, requireAuth, postsRoutes);
 app.use('/comments', requireSetup, requireAuth, commentsRoutes);
@@ -56,29 +56,29 @@ app.use('/api', apiRoutes);
 app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
     try {
         const [
-            totalAccounts,
-            loggedInAccounts,
-            failedAccounts,
+            totalProfiles,
+            activeProfiles,
             pendingTasks,
             totalTargets,
-            totalPosts
+            totalPosts,
+            totalComments
         ] = await Promise.all([
-            prisma.facebookAccount.count(),
-            prisma.facebookAccount.count({ where: { status: 'logged_in' } }),
-            prisma.facebookAccount.count({ where: { status: 'failed' } }),
+            prisma.visionProfile.count(),
+            prisma.visionProfile.count({ where: { status: 'active' } }),
             prisma.botTask.count({ where: { status: 'pending' } }),
             prisma.target.count(),
-            prisma.postTask.count()
+            prisma.postTask.count(),
+            prisma.comment.count()
         ]);
 
         res.render('dashboard', {
             stats: {
-                totalAccounts,
-                loggedInAccounts,
-                failedAccounts,
+                totalProfiles,
+                activeProfiles,
                 pendingTasks,
                 totalTargets,
-                totalPosts
+                totalPosts,
+                totalComments
             }
         });
     } catch (error) {

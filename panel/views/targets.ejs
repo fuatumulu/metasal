@@ -18,7 +18,7 @@
                 <a href="/dashboard">📊 Dashboard</a>
             </li>
             <li>
-                <a href="/accounts">👤 Hesaplar</a>
+                <a href="/profiles">🖥️ Profiller</a>
             </li>
             <li class="active">
                 <a href="/targets">🎯 Hedefler</a>
@@ -87,6 +87,7 @@
                                             <th>Tip</th>
                                             <th>URL</th>
                                             <th>İsim</th>
+                                            <th>Beğenen</th>
                                             <th>Durum</th>
                                             <th>İşlemler</th>
                                         </tr>
@@ -94,7 +95,7 @@
                                     <tbody>
                                         <% if (targets.length===0) { %>
                                             <tr>
-                                                <td colspan="6" class="text-center">Henüz hedef eklenmedi</td>
+                                                <td colspan="7" class="text-center">Henüz hedef eklenmedi</td>
                                             </tr>
                                             <% } %>
                                                 <% targets.forEach(function(target) { %>
@@ -112,9 +113,14 @@
                                                             <%= target.name || '-' %>
                                                         </td>
                                                         <td>
+                                                            <strong>
+                                                                <%= target._count.likedBy %> profil
+                                                            </strong>
+                                                        </td>
+                                                        <td>
                                                             <span
-                                                                class="status-badge <%= target.status === 'liked' ? 'success' : target.status === 'failed' ? 'danger' : 'warning' %>">
-                                                                <%= target.status==='liked' ? 'Beğenildi' :
+                                                                class="status-badge <%= target.status === 'completed' ? 'success' : target.status === 'failed' ? 'danger' : 'warning' %>">
+                                                                <%= target.status==='completed' ? 'Beğenildi' :
                                                                     target.status==='failed' ? 'Başarısız' : 'Bekliyor'
                                                                     %>
                                                             </span>

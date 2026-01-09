@@ -8,9 +8,75 @@ function sleep(ms) {
 }
 
 /**
- * Facebook'a giriş yap
+ * Cookie ile Facebook'a giriş yap
  */
-async function login(page, username, password) {
+async function loginWithCookie(page, cookieBase64) {
+    try {
+        console.log('Cookie ile giriş yapılıyor...');
+
+        // Base64'ten cookie'leri decode et
+        const cookieJson = Buffer.from(cookieBase64, 'base64').toString('utf-8');
+        const cookies = JSON.parse(cookieJson);
+
+        // Facebook'a git (cookie set etmeden önce domain gerekli)
+        await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
+        await sleep(1000);
+
+        // Cookie'leri set et
+        for (const cookie of cookies) {
+            try {
+                await page.setCookie({
+                    name: cookie.name,
+                    value: cookie.value,
+                    domain: cookie.domain || '.facebook.com',
+                    path: cookie.path || '/',
+                    httpOnly: cookie.httpOnly !== undefined ? cookie.httpOnly : true,
+                    secure: cookie.secure !== undefined ? cookie.secure : true,
+                    expires: cookie.expirationDate ? Math.floor(cookie.expirationDate / 1000) : undefined
+                });
+            } catch (e) {
+                // Cookie set hatası, devam et
+            }
+        }
+
+        // Sayfayı yenile
+        await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
+        await sleep(2000);
+
+        // Giriş kontrolü
+        const url = page.url();
+        if (url.includes('login') || url.includes('checkpoint')) {
+            console.log('Cookie ile giriş başarısız');
+            return false;
+        }
+
+        console.log('Cookie ile giriş başarılı');
+        return true;
+    } catch (error) {
+        console.error('Cookie login hatası:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Facebook'a giriş yap (cookie veya kullanıcı adı/şifre ile)
+ */
+async function login(page, username, password, cookie = null) {
+    // Önce cookie ile dene
+    if (cookie) {
+        const cookieSuccess = await loginWithCookie(page, cookie);
+        if (cookieSuccess) {
+            return true;
+        }
+        console.log('Cookie başarısız, kullanıcı adı/şifre deneniyor...');
+    }
+
+    // Cookie yoksa veya başarısız olduysa kullanıcı adı/şifre ile dene
+    if (!username || !password) {
+        console.log('Kullanıcı adı veya şifre yok');
+        return false;
+    }
+
     try {
         console.log(`Facebook girişi yapılıyor: ${username}`);
 

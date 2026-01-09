@@ -10,7 +10,7 @@ async function getPendingTask() {
         const response = await axios.get(`${PANEL_URL}/api/tasks/pending`);
         return response.data.task;
     } catch (error) {
-        console.error('Görev alma hatası:', error.message);
+        // Silent error for task polling
         return null;
     }
 }
@@ -30,23 +30,7 @@ async function reportTaskResult(taskId, status, result = null) {
     }
 }
 
-/**
- * Hesap durumunu güncelle
- */
-async function updateAccountStatus(accountId, status, visionProfileId = null) {
-    try {
-        await axios.post(`${PANEL_URL}/api/accounts/${accountId}/status`, {
-            status,
-            visionProfileId
-        });
-        console.log(`Hesap #${accountId} durumu güncellendi: ${status}`);
-    } catch (error) {
-        console.error('Hesap güncelleme hatası:', error.message);
-    }
-}
-
 module.exports = {
     getPendingTask,
-    reportTaskResult,
-    updateAccountStatus
+    reportTaskResult
 };

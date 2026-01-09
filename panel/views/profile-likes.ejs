@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaSal - Profil Beğenileri</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>MetaSal</h2>
+        </div>
+        <ul class="nav-links">
+            <li>
+                <a href="/dashboard">📊 Dashboard</a>
+            </li>
+            <li class="active">
+                <a href="/profiles">🖥️ Profiller</a>
+            </li>
+            <li>
+                <a href="/targets">🎯 Hedefler</a>
+            </li>
+            <li>
+                <a href="/posts">📝 Gönderiler</a>
+            </li>
+            <li>
+                <a href="/comments">💬 Yorumlar</a>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <a href="/logout" class="logout-btn">🚪 Çıkış</a>
+        </div>
+    </nav>
+
+    <main class="content">
+        <div class="page-header">
+            <h1>
+                <%= profile.name %> - Beğenilen Hedefler
+            </h1>
+            <a href="/profiles" class="link">← Profillere Dön</a>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>Beğenilen Hedefler (<%= profile.likedTargets.length %> adet)</h3>
+            </div>
+            <div class="card-body">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Hedef</th>
+                            <th>Tip</th>
+                            <th>URL</th>
+                            <th>Beğenilme Tarihi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if (profile.likedTargets.length===0) { %>
+                            <tr>
+                                <td colspan="4" class="text-center">Bu profil henüz hedef beğenmedi</td>
+                            </tr>
+                            <% } %>
+                                <% profile.likedTargets.forEach(function(liked) { %>
+                                    <tr>
+                                        <td>
+                                            <%= liked.target.name || liked.target.url.substring(0, 30) %>
+                                        </td>
+                                        <td>
+                                            <%= liked.target.type==='page' ? '📄 Sayfa' : '👥 Grup' %>
+                                        </td>
+                                        <td>
+                                            <a href="<%= liked.target.url %>" target="_blank" class="link">
+                                                <%= liked.target.url.substring(0, 40) %>...
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <%= new Date(liked.likedAt).toLocaleString('tr-TR') %>
+                                        </td>
+                                    </tr>
+                                    <% }); %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>

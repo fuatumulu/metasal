@@ -14,60 +14,73 @@ model Admin {
   createdAt DateTime @default(now())
 }
 
-model FacebookAccount {
-  id              Int       @id @default(autoincrement())
-  username        String
-  password        String
-  status          String    @default("pending") // pending, logged_in, failed
-  visionProfileId String?
-  lastChecked     DateTime?
-  createdAt       DateTime  @default(now())
-  tasks           BotTask[]
+// Vision Antidetect Browser Profilleri
+model VisionProfile {
+  id           Int                  @id @default(autoincrement())
+  visionId     String               @unique  // Vision API'dan gelen UUID
+  name         String                        // Profil adı
+  status       String               @default("active") // active, disabled
+  lastSyncedAt DateTime?
+  createdAt    DateTime             @default(now())
+  likedTargets ProfileLikedTarget[]
+  tasks        BotTask[]
+}
+
+// Profillerin beğendiği hedefler (tekrar beğenmeyi önlemek için)
+model ProfileLikedTarget {
+  id        Int           @id @default(autoincrement())
+  profile   VisionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId Int
+  target    Target        @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  targetId  Int
+  likedAt   DateTime      @default(now())
+
+  @@unique([profileId, targetId])
 }
 
 model Target {
-  id        Int       @id @default(autoincrement())
-  type      String    // page, group
-  url       String
-  name      String?
-  status    String    @default("pending") // pending, liked, failed
-  createdAt DateTime  @default(now())
-  tasks     BotTask[]
+  id           Int                  @id @default(autoincrement())
+  type         String               // page, group
+  url          String
+  name         String?
+  status       String               @default("pending") // pending, completed, failed
+  createdAt    DateTime             @default(now())
+  likedBy      ProfileLikedTarget[]
+  tasks        BotTask[]
 }
 
 model PostTask {
-  id            Int       @id @default(autoincrement())
-  searchKeyword String    // Gönderide aranacak kelime öbeği
-  targetLikes   Int       @default(0)  // Hedef beğeni sayısı
-  targetComments Int      @default(0)  // Hedef yorum sayısı  
-  targetShares  Int       @default(0)  // Hedef paylaşım sayısı
-  doneLikes     Int       @default(0)  // Yapılan beğeni sayısı
-  doneComments  Int       @default(0)  // Yapılan yorum sayısı
-  doneShares    Int       @default(0)  // Yapılan paylaşım sayısı
-  status        String    @default("pending") // pending, in_progress, completed, failed
-  createdAt     DateTime  @default(now())
-  tasks         BotTask[]
+  id             Int       @id @default(autoincrement())
+  searchKeyword  String    // Gönderide aranacak kelime öbeği
+  targetLikes    Int       @default(0)
+  targetComments Int       @default(0)
+  targetShares   Int       @default(0)
+  doneLikes      Int       @default(0)
+  doneComments   Int       @default(0)
+  doneShares     Int       @default(0)
+  status         String    @default("pending") // pending, in_progress, completed, failed
+  createdAt      DateTime  @default(now())
+  tasks          BotTask[]
 }
 
 model Comment {
   id        Int      @id @default(autoincrement())
   text      String   @db.Text
-  usedCount Int      @default(0)  // Kaç kez kullanıldı
+  usedCount Int      @default(0)
   createdAt DateTime @default(now())
 }
 
 model BotTask {
-  id         Int              @id @default(autoincrement())
-  account    FacebookAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  accountId  Int
-  taskType   String           // login, like_target, post_action
-  target     Target?          @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  id         Int            @id @default(autoincrement())
+  profile    VisionProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId  Int
+  taskType   String         // like_target, post_action
+  target     Target?        @relation(fields: [targetId], references: [id], onDelete: Cascade)
   targetId   Int?
-  postTask   PostTask?        @relation(fields: [postTaskId], references: [id], onDelete: Cascade)
+  postTask   PostTask?      @relation(fields: [postTaskId], references: [id], onDelete: Cascade)
   postTaskId Int?
-  status     String           @default("pending") // pending, processing, completed, failed
-  result     String?          @db.Text
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  status     String         @default("pending") // pending, processing, completed, failed
+  result     String?        @db.Text
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 }
-

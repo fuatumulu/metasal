@@ -1,10 +1,30 @@
 require('dotenv').config();
 
-const { getPendingTask, reportTaskResult, updateAccountStatus } = require('./api');
-const { getOrCreateProfile, startProfile, stopProfile } = require('./vision');
-const { sleep, login, likeTarget, likePost, commentPost, sharePost } = require('./facebook');
+const express = require('express');
+const { getPendingTask, reportTaskResult } = require('./api');
+const { listProfiles, startProfile, stopProfile } = require('./vision');
+const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
+const axios = require('axios');
 
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
+const PORT = process.env.BOT_PORT || 3001;
+const PANEL_URL = process.env.PANEL_URL || 'http://localhost:3000';
+
+const app = express();
+app.use(express.json());
+
+/**
+ * Vision profillerini listele (Panel tarafından çağrılır)
+ */
+app.get('/vision-profiles', async (req, res) => {
+    try {
+        const profiles = await listProfiles();
+        res.json({ profiles });
+    } catch (error) {
+        console.error('Vision profiles endpoint error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 /**
  * Görevi işle
@@ -14,29 +34,16 @@ async function processTask(task) {
     console.log(`Görev #${task.id} işleniyor: ${task.taskType}`);
     console.log(`========================================`);
 
-    const account = task.account;
+    const profile = task.profile;
+    const visionId = profile.visionId;
     let browser = null;
-    let profileId = null;
 
     try {
-        // Profil al veya oluştur
-        profileId = await getOrCreateProfile(account.id, account.visionProfileId);
-        if (!profileId) {
-            console.error('Profil oluşturulamadı');
-            await reportTaskResult(task.id, 'failed', 'Profil oluşturulamadı');
-            return;
-        }
-
-        // Profil ID'yi kaydet
-        if (profileId !== account.visionProfileId) {
-            await updateAccountStatus(account.id, account.status, profileId);
-        }
-
         // Browser'ı başlat
-        browser = await startProfile(profileId);
+        browser = await startProfile(visionId);
         if (!browser) {
             console.error('Browser başlatılamadı');
-            await reportTaskResult(task.id, 'failed', 'Browser başlatılamadı');
+            await reportTaskResult(task.id, 'failed', 'Browser başlatılamadı veya Vision profil meşgul');
             return;
         }
 
@@ -47,52 +54,17 @@ async function processTask(task) {
         let success = false;
 
         switch (task.taskType) {
-            case 'login':
-                success = await login(page, account.username, account.password);
-                if (success) {
-                    await updateAccountStatus(account.id, 'logged_in', profileId);
-                } else {
-                    await updateAccountStatus(account.id, 'failed', profileId);
-                }
-                break;
-
             case 'like_target':
                 if (task.target) {
-                    // Önce login kontrolü
-                    await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
-                    const url = page.url();
-
-                    if (url.includes('login')) {
-                        // Giriş yapılmamış, önce login yap
-                        const loginSuccess = await login(page, account.username, account.password);
-                        if (!loginSuccess) {
-                            await reportTaskResult(task.id, 'failed', 'Giriş yapılamadı');
-                            await updateAccountStatus(account.id, 'failed', profileId);
-                            return;
-                        }
-                    }
-
+                    // Facebook'ta mıyız kontrol et (Bot zaten login varsayılıyor ama ana sayfaya gidelim)
+                    await page.goto(task.target.url, { waitUntil: 'networkidle2' });
                     success = await likeTarget(page, task.target.url, task.target.type);
                 }
                 break;
 
             case 'post_action':
                 if (task.postTask) {
-                    // Önce login kontrolü
-                    await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
-                    const url = page.url();
-
-                    if (url.includes('login')) {
-                        const loginSuccess = await login(page, account.username, account.password);
-                        if (!loginSuccess) {
-                            await reportTaskResult(task.id, 'failed', 'Giriş yapılamadı');
-                            await updateAccountStatus(account.id, 'failed', profileId);
-                            return;
-                        }
-                    }
-
                     // Kelimeye göre gönderi bul
-                    const { findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
                     const found = await findPostByKeyword(page, task.postTask.searchKeyword);
 
                     if (!found) {
@@ -100,16 +72,34 @@ async function processTask(task) {
                         return;
                     }
 
-                    // Action tipini result'tan al
+                    // Action tipini botTask.result'tan al (Panel görev oluştururken oraya yazdı)
                     const action = task.result; // like, comment, share
+                    console.log(`Aksiyon gerçekleştiriliyor: ${action}`);
 
                     switch (action) {
                         case 'like':
                             success = await likeCurrentPost(page);
                             break;
+
                         case 'comment':
-                            success = await commentCurrentPost(page, task.postTask.commentText);
+                            // Panelden rastgele yorum çek
+                            try {
+                                const commentRes = await axios.get(`${PANEL_URL}/comments/random`);
+                                const commentText = commentRes.data.comment ? commentRes.data.comment.text : null;
+                                if (commentText) {
+                                    success = await commentCurrentPost(page, commentText);
+                                } else {
+                                    console.error('Yorum havuzu boş');
+                                    await reportTaskResult(task.id, 'failed', 'Yorum havuzu boş');
+                                    return;
+                                }
+                            } catch (e) {
+                                console.error('Yorum çekilemedi:', e.message);
+                                await reportTaskResult(task.id, 'failed', 'Yorum havuzuna ulaşılamadı');
+                                return;
+                            }
                             break;
+
                         case 'share':
                             success = await shareCurrentPost(page);
                             break;
@@ -125,30 +115,23 @@ async function processTask(task) {
         console.error('Görev işleme hatası:', error);
         await reportTaskResult(task.id, 'failed', error.message);
     } finally {
-        // Browser'ı kapat
+        // Browser'ı kapatma, sadece disconnect et (Vision profili açık kalsın ama biz bağlantıyı koparalım)
         if (browser) {
             try {
                 await browser.disconnect();
             } catch (e) { }
         }
 
-        // Profili durdur
-        if (profileId) {
-            await stopProfile(profileId);
-        }
+        // Önemli: Vision'da profili durdurmuyoruz (stopProfile çağırmıyoruz) 
+        // çünkü kullanıcı profili açık tutmak istiyor olabilir.
     }
 }
 
 /**
  * Ana bot döngüsü
  */
-async function main() {
-    console.log('========================================');
-    console.log('MetaSal Bot Başlatıldı');
-    console.log(`Panel URL: ${process.env.PANEL_URL || 'http://localhost:3000'}`);
-    console.log(`Vision API: ${process.env.VISION_API_URL || 'http://localhost:35599'}`);
-    console.log(`Kontrol aralığı: ${TASK_CHECK_INTERVAL}ms`);
-    console.log('========================================\n');
+async function workerLoop() {
+    console.log('Worker döngüsü başlatıldı...');
 
     while (true) {
         try {
@@ -156,16 +139,22 @@ async function main() {
 
             if (task) {
                 await processTask(task);
-            } else {
-                console.log('Bekleyen görev yok, bekleniyor...');
             }
         } catch (error) {
-            console.error('Ana döngü hatası:', error);
+            console.error('Worker loop error:', error);
         }
 
         await sleep(TASK_CHECK_INTERVAL);
     }
 }
 
-// Botu başlat
-main().catch(console.error);
+// Sunucuyu başlat ve worker'ı çalıştır
+app.listen(PORT, () => {
+    console.log('========================================');
+    console.log(`MetaSal Bot API çalışıyor: port ${PORT}`);
+    console.log(`Panel URL: ${PANEL_URL}`);
+    console.log(`Vision API: ${process.env.VISION_API_URL || 'http://localhost:35599'}`);
+    console.log('========================================\n');
+
+    workerLoop().catch(console.error);
+});
