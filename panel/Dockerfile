@@ -24,5 +24,5 @@ COPY . .
 # Expose port
 EXPOSE 3000
 
-# Start command
-CMD ["npm", "start"]
+# Start command (önce db push, sonra start)
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm start"]
