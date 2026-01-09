@@ -73,6 +73,10 @@ async function processTask(task) {
         const pages = await browser.pages();
         const page = pages[0] || await browser.newPage();
 
+        // Facebook'a git ve oturumun oturmasını bekle
+        console.log('Facebook ana sayfası açılıyor...');
+        await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
+
         // Facebook Stabilizasyonu: Saçma yenilemeleri engellemek için bekle ve reload et
         console.log('Facebook oturumu sabitleniyor (10 sn bekleme + reload)...');
         await sleep(10000);
@@ -89,8 +93,7 @@ async function processTask(task) {
         switch (task.taskType) {
             case 'like_target':
                 if (task.target) {
-                    // Facebook'ta mıyız kontrol et (Bot zaten login varsayılıyor ama ana sayfaya gidelim)
-                    await page.goto(task.target.url, { waitUntil: 'networkidle2' });
+                    // Hedef sayfaya git
                     success = await likeTarget(page, task.target.url, task.target.type);
                 }
                 break;
