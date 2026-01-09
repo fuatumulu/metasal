@@ -18,6 +18,7 @@ model Admin {
 model VisionProfile {
   id           Int                  @id @default(autoincrement())
   visionId     String               @unique  // Vision API'dan gelen UUID
+  folderId     String                        // Vision API'dan gelen Folder UUID
   name         String                        // Profil adı
   status       String               @default("active") // active, disabled
   lastSyncedAt DateTime?

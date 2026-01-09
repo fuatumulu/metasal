@@ -36,11 +36,12 @@ async function processTask(task) {
 
     const profile = task.profile;
     const visionId = profile.visionId;
+    const folderId = profile.folderId;
     let browser = null;
 
     try {
         // Browser'ı başlat
-        browser = await startProfile(visionId);
+        browser = await startProfile(folderId, visionId);
         if (!browser) {
             console.error('Browser başlatılamadı');
             await reportTaskResult(task.id, 'failed', 'Browser başlatılamadı veya Vision profil meşgul');

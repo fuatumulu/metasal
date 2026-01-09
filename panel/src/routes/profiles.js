@@ -46,7 +46,7 @@ router.post('/sync', async (req, res) => {
 
         for (const vp of visionProfiles) {
             const existing = await prisma.visionProfile.findUnique({
-                where: { visionId: vp.uuid }
+                where: { visionId: vp.visionId }
             });
 
             if (existing) {
@@ -54,7 +54,8 @@ router.post('/sync', async (req, res) => {
                 await prisma.visionProfile.update({
                     where: { id: existing.id },
                     data: {
-                        name: vp.name || vp.uuid,
+                        name: vp.name || vp.visionId,
+                        folderId: vp.folderId,
                         lastSyncedAt: new Date()
                     }
                 });
@@ -63,8 +64,9 @@ router.post('/sync', async (req, res) => {
                 // Yeni ekle
                 await prisma.visionProfile.create({
                     data: {
-                        visionId: vp.uuid,
-                        name: vp.name || vp.uuid,
+                        visionId: vp.visionId,
+                        folderId: vp.folderId,
+                        name: vp.name || vp.visionId,
                         lastSyncedAt: new Date()
                     }
                 });
