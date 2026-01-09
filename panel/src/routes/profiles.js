@@ -61,6 +61,67 @@ router.post('/sync', async (req, res) => {
         res.redirect('/profiles');
     }
 });
+
+// Kuyruğu Optimize Et (Eksik beğeni görevlerini topluca oluşturur)
+router.post('/optimize', async (req, res) => {
+    try {
+        // 1. Tüm aktif profilleri ve hedefleri al
+        const profiles = await prisma.visionProfile.findMany({ where: { status: 'active' } });
+        const targets = await prisma.target.findMany();
+
+        let createdCount = 0;
+
+        for (const target of targets) {
+            // Bu hedefi zaten beğenmiş profil ID'lerini al
+            const alreadyLiked = await prisma.profileLikedTarget.findMany({
+                where: { targetId: target.id },
+                select: { profileId: true }
+            });
+            const likedIds = alreadyLiked.map(al => al.profileId);
+
+            for (const profile of profiles) {
+                // Eğer profil bu hedefi beğenmemişse
+                if (!likedIds.includes(profile.id)) {
+                    // Ve bekleyen/işlenen bir görevi yoksa
+                    const existingTask = await prisma.botTask.findFirst({
+                        where: {
+                            profileId: profile.id,
+                            targetId: target.id,
+                            taskType: 'like_target',
+                            status: { in: ['pending', 'processing'] }
+                        }
+                    });
+
+                    if (!existingTask) {
+                        await prisma.botTask.create({
+                            data: {
+                                profileId: profile.id,
+                                targetId: target.id,
+                                taskType: 'like_target',
+                                status: 'pending'
+                            }
+                        });
+                        createdCount++;
+                    }
+                }
+            }
+        }
+
+        const allProfiles = await prisma.visionProfile.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { likedTargets: true, tasks: true } } }
+        });
+
+        res.render('profiles', {
+            profiles: allProfiles,
+            error: null,
+            success: `Kuyruk optimize edildi. ${createdCount} adet eksik görev oluşturuldu.`
+        });
+    } catch (error) {
+        console.error('Queue optimize error:', error);
+        res.redirect('/profiles');
+    }
+});
 // Profil durumunu değiştir (aktif/devre dışı)
 router.post('/toggle/:id', async (req, res) => {
     const { id } = req.params;

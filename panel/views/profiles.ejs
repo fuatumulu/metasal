@@ -57,9 +57,15 @@
                             <div class="card-header"
                                 style="display:flex;justify-content:space-between;align-items:center">
                                 <h3>Profil Senkronizasyonu</h3>
-                                <form action="/profiles/sync" method="POST">
-                                    <button type="submit" class="btn btn-primary">🔄 Vision'dan Senkronize Et</button>
-                                </form>
+                                <div style="display:flex;gap:10px">
+                                    <form action="/profiles/optimize" method="POST">
+                                        <button type="submit" class="btn btn-warning">🧹 Kuyruğu Optimize Et</button>
+                                    </form>
+                                    <form action="/profiles/sync" method="POST">
+                                        <button type="submit" class="btn btn-primary">🔄 Vision'dan Senkronize
+                                            Et</button>
+                                    </form>
+                                </div>
                             </div>
                             <div class="card-body">
                                 <small style="color:#666">

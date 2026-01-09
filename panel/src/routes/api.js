@@ -157,8 +157,9 @@ router.post('/profiles/push', async (req, res) => {
                 where: { visionId: vp.visionId }
             });
 
+            let profile;
             if (existing) {
-                await prisma.visionProfile.update({
+                profile = await prisma.visionProfile.update({
                     where: { id: existing.id },
                     data: {
                         name: vp.name || vp.visionId,
@@ -168,15 +169,32 @@ router.post('/profiles/push', async (req, res) => {
                 });
                 updatedCount++;
             } else {
-                await prisma.visionProfile.create({
+                profile = await prisma.visionProfile.create({
                     data: {
                         visionId: vp.visionId,
                         folderId: vp.folderId,
                         name: vp.name || vp.visionId,
+                        status: 'active', // Yeni profiller varsayılan olarak aktif
                         lastSyncedAt: new Date()
                     }
                 });
                 addedCount++;
+
+                // YENİ PROFİL İÇİN OTOMATİK GÖREV OLUŞTURMA
+                // Mevcut tüm aktif hedefleri bul
+                const targets = await prisma.target.findMany();
+                for (const target of targets) {
+                    // Mükerrer kontrolü (Hoş, yeni profil olduğu için zaten yoktur ama güvenlik için)
+                    await prisma.botTask.create({
+                        data: {
+                            profileId: profile.id,
+                            taskType: 'like_target',
+                            targetId: target.id,
+                            status: 'pending'
+                        }
+                    });
+                }
+                console.log(`Yeni profil "${vp.name}" için ${targets.length} hedef görevi oluşturuldu.`);
             }
         }
 
