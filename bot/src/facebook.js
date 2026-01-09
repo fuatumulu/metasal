@@ -196,7 +196,7 @@ async function likeTarget(page, targetUrl, targetType) {
             const result = await page.evaluate(() => {
                 const targets = {
                     action: ['join group', 'gruba katıl', 'join', 'katıl'],
-                    active: ['joined', 'katıldın', 'cancel request', 'isteği iptal et']
+                    active: ['joined', 'katıldın', 'visit group', 'grubu ziyaret et', 'gruba göz at', 'visit', 'ziyaret et', 'cancel request', 'isteği iptal et']
                 };
 
                 const allElements = Array.from(document.querySelectorAll('span, div, b, div[role="button"]'));
