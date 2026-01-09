@@ -24,10 +24,10 @@ async function listProfiles() {
 
         // 1. Klasörleri al
         const foldersRes = await axios.get(`${VISION_CLOUD_API}/folders`, { headers });
-        const folders = foldersRes.data.data?.items || [];
+        const folders = foldersRes.data.data || [];
 
         console.log('\n--- Vision Klasör Listesi ---');
-        folders.forEach(f => console.log(`İsim: ${f.name} | ID: ${f.id}`));
+        folders.forEach(f => console.log(`İsim: ${f.folder_name} | ID: ${f.id}`));
         console.log('-----------------------------\n');
 
         const filterFolderId = process.env.VISION_FOLDER_ID;

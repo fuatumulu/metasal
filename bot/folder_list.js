@@ -18,15 +18,16 @@ async function listFolders() {
             headers: { 'X-Token': token }
         });
 
-        const folders = response.data.data?.items || [];
+        // Dökümantasyona göre Folders API doğrudan 'data' içinde dizi döner
+        const folders = response.data.data || [];
 
         if (folders.length === 0) {
-            console.log('Hiç klasör bulunamadı or Token geçersiz.');
+            console.log('Hiç klasör bulunamadı veya Token geçersiz.');
         } else {
             console.log('Bulunan Klasörler:');
             console.log('----------------------------------------------------');
             folders.forEach(folder => {
-                console.log(`Klasör Adı : ${folder.name}`);
+                console.log(`Klasör Adı : ${folder.folder_name}`);
                 console.log(`Klasör ID  : ${folder.id}`);
                 console.log('----------------------------------------------------');
             });
