@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
-const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
+const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
 const axios = require('axios');
 
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
@@ -166,20 +166,7 @@ async function processTask(task, threadId) {
             case 'post_action':
                 if (task.postTask) {
                     // === POST ACTION AKIŞI ===
-                    // 1. Stabilizasyon: 10 saniye bekle ve sayfayı yenile
-                    console.log(`[Thread-${threadId}] --- POST ACTION: Stabilizasyon başlatılıyor ---`);
-                    console.log(`[Thread-${threadId}] 10 saniye bekleniyor...`);
-                    await sleep(10000);
-
-                    console.log(`[Thread-${threadId}] Sayfa yenileniyor...`);
-                    try {
-                        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-                    } catch (e) {
-                        console.log(`[Thread-${threadId}] Reload uyarısı (devam ediliyor):`, e.message);
-                    }
-                    await sleep(2000);
-
-                    // 2. Kelimeye göre gönderi bul (40sn + 30sn + 30sn retry mekanizması)
+                    // 1. Kelimeye göre gönderi bul (40sn + 30sn + 30sn retry mekanizması)
                     console.log(`[Thread-${threadId}] --- POST ACTION: Gönderi aranıyor ---`);
                     const found = await findPostByKeyword(page, task.postTask.searchKeyword);
 
@@ -245,22 +232,16 @@ async function processTask(task, threadId) {
         await sendLog(success ? 'success' : 'error', 'TASK_END', `[Thread-${threadId}] Görev #${task.id} ${success ? 'başarıyla tamamlandı' : 'başarısız oldu'}`, { taskId: task.id, success, threadId });
 
         if (success) {
-            if (task.taskType === 'like_target') {
-                // Beğeni işlemi sonrası 5 sn bekleyip ana sayfaya dön, sonra kapat
-                console.log(`[Thread-${threadId}] --- BEĞENİ SONRASI YÖNLENDİRME ---`);
-                console.log(`[Thread-${threadId}] İşlem başarılı. 5 saniye bekleniyor...`);
-                await sleep(5000);
-
-                console.log(`[Thread-${threadId}] Facebook ana sayfasına dönülüyor...`);
-                await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
-                await sleep(2000);
-            } else {
-                // Diğer başarılı işlemler için mevcut 10 sn bekleme
-                console.log(`[Thread-${threadId}] Görev başarıyla tamamlandı. 10 saniye içinde tarayıcı kapatılacak...`);
-                await sleep(10000);
-            }
+            // Başarılı işlem sonrası doğal gezinme (cool-down)
+            await simulateHumanBrowsing(page);
 
             console.log(`[Thread-${threadId}] --- OTOMATİK TARAYICI KAPATMA ---`);
+            console.log(`[Thread-${threadId}] İşlem tamamlandı. Tarayıcı kapatılıyor...`);
+            await stopProfile(folderId, visionId);
+        } else {
+            // Başarısız işlem sonrası kısa bekleme ve kapatma
+            console.log(`[Thread-${threadId}] Görev başarısız oldu. 5 saniye içinde tarayıcı kapatılacak...`);
+            await sleep(5000);
             await stopProfile(folderId, visionId);
         }
 

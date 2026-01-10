@@ -626,10 +626,14 @@ async function commentCurrentPost(page, commentText) {
         console.log(`Yorum alanı bulundu (iframe: ${commentInputFound.isIframe}, fallback: ${commentInputFound.fallback || false})`);
         await sleep(500);
 
-        // Yorumu yaz
-        await page.keyboard.type(commentText, { delay: 50 });
+        // Yorumu insansı bir hızda yaz
+        console.log('Yorum insansı hızda yazılıyor...');
+        for (const char of commentText) {
+            await page.keyboard.type(char, { delay: Math.floor(Math.random() * 150) + 100 }); // 100-250ms arası rastgele gecikme
+        }
+
         console.log('Yorum yazıldı, Enter ile gönderiliyor...');
-        await sleep(500);
+        await sleep(1000);
 
         // Enter tuşuna bas
         await page.keyboard.press('Enter');
@@ -733,6 +737,56 @@ async function sharePost(page, postUrl) {
     return await shareCurrentPost(page);
 }
 
+/**
+ * İşlem sonrası doğal gezinme (Cool-down)
+ * Ana sayfada 20-30 saniye rastgele gezer
+ */
+async function simulateHumanBrowsing(page) {
+    try {
+        console.log('--- DOĞAL GEZİNME (COOL-DOWN) BAŞLATILDI ---');
+        await sendLog('info', 'COOL_DOWN_START', 'İşlem sonrası doğal gezinme başlatıldı (20-30sn)');
+
+        // Ana sayfaya git
+        console.log('Facebook ana sayfasına gidiliyor...');
+        await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 60000 });
+        await sleep(3000);
+
+        const duration = Math.floor(Math.random() * 10000) + 20000; // 20-30 saniye arası
+        const startTime = Date.now();
+
+        console.log(`${Math.round(duration / 1000)} saniye boyunca rastgele gezilecek...`);
+
+        while (Date.now() - startTime < duration) {
+            // Rastgele miktar aşağı kaydır (200-600px)
+            const scrollAmount = Math.floor(Math.random() * 400) + 200;
+
+            await page.evaluate((amount) => {
+                window.scrollBy({ top: amount, behavior: 'smooth' });
+            }, scrollAmount);
+
+            // Rastgele bekle (1.5-3.5 saniye)
+            const waitTime = Math.floor(Math.random() * 2000) + 1500;
+            await sleep(waitTime);
+
+            // %20 ihtimalle biraz yukarı kaydır (rastgelelik katmak için)
+            if (Math.random() < 0.2) {
+                const upScroll = Math.floor(Math.random() * 200) + 100;
+                await page.evaluate((amount) => {
+                    window.scrollBy({ top: -amount, behavior: 'smooth' });
+                }, upScroll);
+                await sleep(1000);
+            }
+        }
+
+        console.log('Doğal gezinme tamamlandı.');
+        await sendLog('info', 'COOL_DOWN_END', 'Doğal gezinme tamamlandı');
+        return true;
+    } catch (error) {
+        console.error('Doğal gezinme hatası:', error.message);
+        return false;
+    }
+}
+
 module.exports = {
     sleep,
     login,
@@ -746,5 +800,6 @@ module.exports = {
     shareCurrentPost,
     likePost,
     commentPost,
-    sharePost
+    sharePost,
+    simulateHumanBrowsing // Eklendi
 };
