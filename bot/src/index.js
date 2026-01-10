@@ -210,19 +210,23 @@ async function processTask(task, threadId) {
                         case 'comment':
                             // Panelden rastgele yorum çek
                             try {
-                                const commentRes = await axios.get(`${PANEL_URL}/comments/random`);
+                                const commentRes = await axios.get(`${PANEL_URL}/api/comments/random`);
                                 const commentText = commentRes.data.comment ? commentRes.data.comment.text : null;
                                 if (commentText) {
                                     success = await commentCurrentPost(page, commentText);
                                 } else {
                                     console.error(`[Thread-${threadId}] Yorum havuzu boş`);
                                     await reportTaskResult(task.id, 'failed', 'Yorum havuzu boş');
+                                    console.log(`[Thread-${threadId}] Hata nedeniyle 5 saniye içinde kapatılacak...`);
+                                    await sleep(5000);
                                     await stopProfile(folderId, visionId);
                                     return;
                                 }
                             } catch (e) {
                                 console.error(`[Thread-${threadId}] Yorum çekilemedi:`, e.message);
                                 await reportTaskResult(task.id, 'failed', 'Yorum havuzuna ulaşılamadı');
+                                console.log(`[Thread-${threadId}] Hata nedeniyle 5 saniye içinde kapatılacak...`);
+                                await sleep(5000);
                                 await stopProfile(folderId, visionId);
                                 return;
                             }

@@ -296,24 +296,57 @@ async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
     console.log(`${durationSeconds} saniye boyunca "${keyword}" aranıyor...`);
 
     while (Date.now() < endTime) {
-        // Sayfadaki tüm gönderileri tara
+        // Sayfadaki tüm gönderileri tara - Daha güvenilir seçiciler
         const found = await page.evaluate((searchText) => {
-            const posts = document.querySelectorAll('[data-ad-preview="message"], [data-ad-comet-preview="message"], div[dir="auto"]');
-            for (const post of posts) {
-                if (post.textContent.toLowerCase().includes(searchText.toLowerCase())) {
-                    // Gönderiyi bulduk, tıklanabilir elementi bul
-                    const postContainer = post.closest('[role="article"]') || post.closest('div[data-pagelet]');
-                    if (postContainer) {
-                        postContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Yöntem 1: role="article" container'larını bul ve içindeki mesaj elementlerini ara
+            const articles = document.querySelectorAll('[role="article"]');
+            for (const article of articles) {
+                // Article içindeki mesaj elementlerini bul
+                const messageEl = article.querySelector('[data-ad-preview="message"], [data-ad-comet-preview="message"]');
+                if (messageEl) {
+                    const text = messageEl.innerText || messageEl.textContent || '';
+                    if (text.toLowerCase().includes(searchText.toLowerCase())) {
+                        article.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return true;
+                    }
+                }
+
+                // Fallback: Article içindeki tüm dir="auto" divleri kontrol et (sadece ilk birkaç seviye)
+                const dirAutoDivs = article.querySelectorAll('div[dir="auto"]');
+                for (const div of dirAutoDivs) {
+                    const text = div.innerText || div.textContent || '';
+                    // Çok kısa metinleri atla (tarih, isim gibi)
+                    if (text.length > 30 && text.toLowerCase().includes(searchText.toLowerCase())) {
+                        article.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         return true;
                     }
                 }
             }
+
+            // Yöntem 2: Doğrudan mesaj elementlerini ara (article dışında kalmış olabilir)
+            const directMessages = document.querySelectorAll('[data-ad-preview="message"], [data-ad-comet-preview="message"]');
+            for (const msg of directMessages) {
+                const text = msg.innerText || msg.textContent || '';
+                if (text.toLowerCase().includes(searchText.toLowerCase())) {
+                    const container = msg.closest('[role="article"]') || msg.closest('div[data-pagelet]') || msg;
+                    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return true;
+                }
+            }
+
             return false;
         }, keyword);
 
         if (found) {
             console.log(`Gönderi bulundu! (${scrollCount} scroll sonrası)`);
+            // Gönderi bulunduğunda butonların görünmesi için biraz daha aşağı kaydır (Kullanıcı isteği: 300px)
+            await page.evaluate(() => {
+                window.scrollBy({
+                    top: 300,
+                    behavior: 'smooth'
+                });
+            });
+            await sleep(1500);
             return true;
         }
 
@@ -467,14 +500,13 @@ async function likeCurrentPost(page) {
 
             for (const el of allElements) {
                 const text = el.textContent.trim().toLowerCase();
-                const rect = el.getBoundingClientRect();
-
-                // Görünür alanda mı?
-                if (rect.top < 0 || rect.top > window.innerHeight) continue;
 
                 if (likeTexts.some(t => text === t)) {
                     // Tıklanabilir elementi bul
                     const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+
+                    // Görünür alana getir ve tıkla
+                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     clickable.click();
                     return true;
                 }
@@ -515,12 +547,10 @@ async function commentCurrentPost(page, commentText) {
 
             for (const el of allElements) {
                 const text = el.textContent.trim().toLowerCase();
-                const rect = el.getBoundingClientRect();
-
-                if (rect.top < 0 || rect.top > window.innerHeight) continue;
 
                 if (commentTexts.some(t => text === t)) {
                     const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     clickable.click();
                     return true;
                 }
@@ -570,12 +600,10 @@ async function commentCurrentPost(page, commentText) {
             // Normal sayfa içinde ara
             const allInputs = document.querySelectorAll('[contenteditable="true"][role="textbox"], [placeholder*="comment"], [placeholder*="yorum"], [aria-placeholder*="comment"], [aria-placeholder*="yorum"]');
             for (const input of allInputs) {
-                const rect = input.getBoundingClientRect();
-                if (rect.top > 0 && rect.top < window.innerHeight) {
-                    input.focus();
-                    input.click();
-                    return { found: true, isIframe: false };
-                }
+                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                input.focus();
+                input.click();
+                return { found: true, isIframe: false };
             }
 
             // Fallback: herhangi bir contenteditable textbox
@@ -632,12 +660,10 @@ async function shareCurrentPost(page) {
 
             for (const el of allElements) {
                 const text = el.textContent.trim().toLowerCase();
-                const rect = el.getBoundingClientRect();
-
-                if (rect.top < 0 || rect.top > window.innerHeight) continue;
 
                 if (shareTexts.some(t => text === t)) {
                     const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     clickable.click();
                     return true;
                 }

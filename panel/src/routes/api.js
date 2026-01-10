@@ -217,5 +217,34 @@ router.post('/logs', async (req, res) => {
     }
 });
 
+// API: Rastgele yorum getir (bot için - yetkilendirme gerektirmez)
+router.get('/comments/random', async (req, res) => {
+    try {
+        const count = await prisma.comment.count();
+        if (count === 0) {
+            return res.json({ comment: null });
+        }
+
+        const skip = Math.floor(Math.random() * count);
+        const comment = await prisma.comment.findFirst({
+            skip,
+            take: 1
+        });
+
+        // Kullanım sayısını artır
+        if (comment) {
+            await prisma.comment.update({
+                where: { id: comment.id },
+                data: { usedCount: { increment: 1 } }
+            });
+        }
+
+        res.json({ comment });
+    } catch (error) {
+        console.error('Random comment error:', error);
+        res.status(500).json({ error: 'Sunucu hatası' });
+    }
+});
+
 module.exports = router;
 
