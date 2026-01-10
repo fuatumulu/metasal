@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const { getPendingTask, reportTaskResult, pushProfiles } = require('./api');
+const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost } = require('./facebook');
 const axios = require('axios');
@@ -33,6 +33,7 @@ async function processTask(task) {
     console.log(`\n========================================`);
     console.log(`Görev #${task.id} işleniyor: ${task.taskType}`);
     console.log(`========================================`);
+    await sendLog('info', 'TASK_START', `Görev #${task.id} başlatıldı`, { taskId: task.id, type: task.taskType });
 
     if (task.taskType === 'sync_profiles') {
         console.log('Profil senkronizasyonu başlatılıyor...');
@@ -85,7 +86,33 @@ async function processTask(task) {
         } catch (e) {
             console.log('Reload uyarısı (devam ediliyor):', e.message);
         }
-        console.log('Oturum sabitlendi, işleme geçiliyor.');
+        console.log('Oturum sabitlendi, doğrulama yapılıyor...');
+
+        // Oturum Doğrulaması: Bildirimler butonu var mı?
+        const hasSession = await page.evaluate(() => {
+            const labels = [
+                'bildirimler', 'notifications',
+                'notifications button', 'bildirimler butonu',
+                'messenger', 'mesajlar' // Alternatif kontrol noktaları
+            ];
+            const elements = Array.from(document.querySelectorAll('[aria-label]'));
+            return elements.some(el => {
+                const label = el.getAttribute('aria-label').toLowerCase();
+                return labels.includes(label);
+            });
+        });
+        if (!hasSession) {
+            await sendLog('error', 'SESSION_ERROR', `Oturum doğrulaması başarısız: Profile: ${profile.name}`, { visionId });
+            console.error('HATA: Oturum doğrulaması başarısız! (Bildirimler/Messenger butonu bulunamadı)');
+            await reportTaskResult(task.id, 'failed', 'Oturum doğrulaması başarısız: Facebook girişi aktif değil');
+
+            // Tarayıcıyı kapat ve sonlandır
+            console.log('Oturum geçersiz olduğu için tarayıcı kapatılıyor...');
+            await stopProfile(folderId, visionId);
+            return;
+        }
+
+        console.log('Oturum doğrulandı, işleme geçiliyor.');
 
         // Görev tipine göre işlem yap
         let success = false;
@@ -146,12 +173,25 @@ async function processTask(task) {
 
         // Sonucu bildir
         await reportTaskResult(task.id, success ? 'completed' : 'failed', success ? 'Başarılı' : 'Başarısız');
+        await sendLog(success ? 'success' : 'error', 'TASK_END', `Görev #${task.id} ${success ? 'başarıyla tamamlandı' : 'başarısız oldu'}`, { taskId: task.id, success });
 
         if (success) {
-            // Başarılı işlem sonrası 10 sn bekleyip tarayıcıyı kapat
+            if (task.taskType === 'like_target') {
+                // Beğeni işlemi sonrası 5 sn bekleyip ana sayfaya dön, sonra kapat
+                console.log('\n--- BEĞENİ SONRASI YÖNLENDİRME ---');
+                console.log('İşlem başarılı. 5 saniye bekleniyor...');
+                await sleep(5000);
+
+                console.log('Facebook ana sayfasına dönülüyor...');
+                await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
+                await sleep(2000);
+            } else {
+                // Diğer başarılı işlemler için mevcut 10 sn bekleme
+                console.log('Görev başarıyla tamamlandı. 10 saniye içinde tarayıcı kapatılacak...');
+                await sleep(10000);
+            }
+
             console.log('\n--- OTOMATİK TARAYICI KAPATMA ---');
-            console.log('Görev başarıyla tamamlandı. Tarayıcı 10 saniye içinde kapatılacak...');
-            await sleep(10000);
             await stopProfile(folderId, visionId);
         }
 

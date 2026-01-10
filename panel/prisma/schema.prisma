@@ -86,3 +86,13 @@ model BotTask {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 }
+
+// Bot İşlem Logları
+model BotLog {
+  id        Int      @id @default(autoincrement())
+  level     String   @default("info") // info, success, warning, error
+  type      String   // GROUP_LIKE, PAGE_LIKE, POST_LIKE, POST_COMMENT, POST_SHARE, SESSION_CHECK, ERROR, etc.
+  message   String   @db.Text
+  details   String?  @db.Text // JSON formatında ek detaylar
+  createdAt DateTime @default(now())
+}

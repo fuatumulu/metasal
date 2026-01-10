@@ -1,4 +1,5 @@
 const ACTION_DELAY = parseInt(process.env.ACTION_DELAY) || 3000;
+const { sendLog } = require('./api');
 
 /**
  * Belirtilen süre kadar bekle
@@ -147,6 +148,7 @@ async function handlePopups(page) {
 async function likeTarget(page, targetUrl, targetType) {
     try {
         console.log(`Hedef inceleniyor: ${targetUrl}`);
+        await sendLog('info', targetType === 'page' ? 'PAGE_CHECK' : 'GROUP_CHECK', `Hedef inceleniyor: ${targetUrl}`, { url: targetUrl, type: targetType });
 
         await page.goto(targetUrl, { waitUntil: 'networkidle2' });
         await sleep(ACTION_DELAY);
@@ -175,6 +177,7 @@ async function likeTarget(page, targetUrl, targetType) {
 
             if (current.status === 'active') {
                 console.log(`Zaten aktif (${current.text}). İşlem atlanıyor.`);
+                await sendLog('success', 'PAGE_LIKE_SKIP', `Sayfa zaten aktif/beğenilmiş: ${current.text}`);
                 return true;
             }
 
@@ -195,6 +198,7 @@ async function likeTarget(page, targetUrl, targetType) {
                     current = await getStatus();
                     if (current.status === 'active') {
                         console.log(`Başarılı! Yeni durum: ${current.text}`);
+                        await sendLog('success', 'PAGE_LIKE_SUCCESS', `Sayfa başarıyla beğenildi/takip edildi: ${current.text}`);
                         return true;
                     } else {
                         console.log('HATA: Butona tıklandı ancak durum değişmedi (Follow -> Following olmadı). Popupları tekrar deniyoruz...');
@@ -229,6 +233,7 @@ async function likeTarget(page, targetUrl, targetType) {
 
             if (current.status === 'active') {
                 console.log(`Zaten gruptasınız veya istek gönderilmiş (${current.text}).`);
+                await sendLog('success', 'GROUP_JOIN_SKIP', `Zaten gruptasınız veya istek gönderilmiş: ${current.text}`);
                 return true;
             }
 
@@ -247,6 +252,7 @@ async function likeTarget(page, targetUrl, targetType) {
                     current = await getStatus();
                     if (current.status === 'active') {
                         console.log(`Başarılı! Yeni durum: ${current.text}`);
+                        await sendLog('success', 'GROUP_JOIN_SUCCESS', `Gruba başarıyla katılma isteği gönderildi: ${current.text}`);
                         return true;
                     } else {
                         console.log('HATA: Katıl butonu tıklandı ama durum değişmedi.');
@@ -337,6 +343,7 @@ async function likeCurrentPost(page) {
         if (liked) {
             await sleep(2000);
             console.log('Gönderi beğenildi');
+            await sendLog('success', 'POST_LIKE_SUCCESS', 'Gönderi başarıyla beğenildi');
             return true;
         }
 
@@ -385,6 +392,7 @@ async function commentCurrentPost(page, commentText) {
             await page.keyboard.press('Enter');
             await sleep(2000);
             console.log('Yorum yapıldı');
+            await sendLog('success', 'POST_COMMENT_SUCCESS', `Yorum yapıldı: ${commentText}`);
             return true;
         }
 
@@ -439,6 +447,7 @@ async function shareCurrentPost(page) {
         if (shared) {
             await sleep(2000);
             console.log('Gönderi paylaşıldı');
+            await sendLog('success', 'POST_SHARE_SUCCESS', 'Gönderi başarıyla paylaşıldı');
             return true;
         }
 

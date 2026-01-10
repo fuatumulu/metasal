@@ -189,5 +189,25 @@ router.post('/profiles/push', async (req, res) => {
     }
 });
 
+// Bot logu kaydet
+router.post('/logs', async (req, res) => {
+    const { level, type, message, details } = req.body;
+
+    try {
+        await prisma.botLog.create({
+            data: {
+                level: level || 'info',
+                type: type || 'SYSTEM',
+                message: message || '',
+                details: details ? JSON.stringify(details) : null
+            }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Log save error:', error);
+        res.status(500).json({ error: 'Log kaydedilemedi' });
+    }
+});
+
 module.exports = router;
 

@@ -40,9 +40,26 @@ async function pushProfiles(profiles) {
     }
 }
 
+/**
+ * Log gönder
+ */
+async function sendLog(level, type, message, details = null) {
+    try {
+        await axios.post(`${PANEL_URL}/api/logs`, {
+            level,
+            type,
+            message,
+            details
+        });
+    } catch (error) {
+        // Silent error for logging
+    }
+}
+
 module.exports = {
     getPendingTask,
     reportTaskResult,
-    pushProfiles
+    pushProfiles,
+    sendLog
 };
 

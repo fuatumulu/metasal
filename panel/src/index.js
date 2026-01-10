@@ -68,7 +68,11 @@ app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
             prisma.botTask.count({ where: { status: 'pending' } }),
             prisma.target.count(),
             prisma.postTask.count(),
-            prisma.comment.count()
+            prisma.comment.count(),
+            prisma.botLog.findMany({
+                take: 50,
+                orderBy: { createdAt: 'desc' }
+            })
         ]);
 
         res.render('dashboard', {
@@ -79,7 +83,11 @@ app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
                 totalTargets,
                 totalPosts,
                 totalComments
-            }
+            },
+            logs: logs.map(log => ({
+                ...log,
+                createdAt: new Date(log.createdAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })
+            }))
         });
     } catch (error) {
         console.error('Dashboard error:', error);

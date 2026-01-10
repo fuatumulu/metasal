@@ -101,7 +101,136 @@
                 </div>
             </div>
         </div>
+        <div class="page-header" style="margin-top: 2rem;">
+            <h2>Canlı Bot Logları</h2>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Zaman</th>
+                            <th>Tip</th>
+                            <th>Seviye</th>
+                            <th>Mesaj</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if (logs && logs.length> 0) { %>
+                            <% logs.forEach(log=> { %>
+                                <tr class="log-row level-<%= log.level %>">
+                                    <td class="log-time text-muted">
+                                        <%= log.createdAt %>
+                                    </td>
+                                    <td><span class="badge badge-type">
+                                            <%= log.type %>
+                                        </span></td>
+                                    <td><span class="badge badge-<%= log.level %>">
+                                            <%= log.level.toUpperCase() %>
+                                        </span></td>
+                                    <td class="log-message">
+                                        <%= log.message %>
+                                    </td>
+                                </tr>
+                                <% }); %>
+                                    <% } else { %>
+                                        <tr>
+                                            <td colspan="4" class="text-center">Henüz log bulunmuyor.</td>
+                                        </tr>
+                                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
+
+    <style>
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .log-table th,
+        .log-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .log-table th {
+            background-color: #f8f9fa;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .log-row:hover {
+            background-color: #fcfcfc;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-type {
+            background-color: #e9ecef;
+            color: #495057;
+        }
+
+        .badge-info {
+            background-color: #cff4fc;
+            color: #055160;
+        }
+
+        .badge-success {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .badge-warning {
+            background-color: #fff3cd;
+            color: #664d03;
+        }
+
+        .badge-error {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+
+        .level-error {
+            background-color: #fff8f8;
+        }
+
+        .level-success {
+            background-color: #f8fff9;
+        }
+
+        .log-time {
+            white-space: nowrap;
+            font-family: monospace;
+        }
+
+        .log-message {
+            color: #333;
+        }
+
+        .text-muted {
+            color: #6c757d;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 1rem;
+        }
+    </style>
 </body>
 
 </html>
