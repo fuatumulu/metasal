@@ -58,7 +58,15 @@ router.post('/sync', async (req, res) => {
 
         const profiles = await prisma.visionProfile.findMany({
             orderBy: { createdAt: 'desc' },
-            include: { _count: { select: { likedTargets: true, tasks: true } } }
+            include: {
+                _count: { select: { likedTargets: true, tasks: true } },
+                tasks: {
+                    where: { status: { in: ['pending', 'processing'] } },
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    include: { target: true }
+                }
+            }
         });
 
         res.render('profiles', {
@@ -119,7 +127,15 @@ router.post('/optimize', async (req, res) => {
 
         const allProfiles = await prisma.visionProfile.findMany({
             orderBy: { createdAt: 'desc' },
-            include: { _count: { select: { likedTargets: true, tasks: true } } }
+            include: {
+                _count: { select: { likedTargets: true, tasks: true } },
+                tasks: {
+                    where: { status: { in: ['pending', 'processing'] } },
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    include: { target: true }
+                }
+            }
         });
 
         res.render('profiles', {
