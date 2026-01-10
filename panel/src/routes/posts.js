@@ -46,20 +46,16 @@ router.post('/add', async (req, res) => {
 
     try {
         // En az bir hedef beğenmiş aktif profilleri bul
-        // En uzun süredir çalışmamış profil önce seçilsin (lastRunAt null olanlar en başta)
         const eligibleProfiles = await prisma.visionProfile.findMany({
             where: {
                 status: 'active',
-                likedTargets: {
-                    some: {} // En az bir tane varsa
-                }
+                likedTargets: { some: {} }
             },
-            orderBy: [
-                { lastRunAt: 'asc' }  // En eski (null dahil) en başta
-            ]
+            orderBy: [{ lastRunAt: 'asc' }]
         });
 
-        if (eligibleProfiles.length === 0) {
+        const profileCount = eligibleProfiles.length;
+        if (profileCount === 0) {
             const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
             return res.render('posts', {
                 posts,
@@ -68,6 +64,17 @@ router.post('/add', async (req, res) => {
             });
         }
 
+        // Kapasite Kontrolü: Tekil aksiyon sayısı profil sayısını aşamaz
+        if (likes > profileCount || comments > profileCount || shares > profileCount) {
+            const posts = await prisma.postTask.findMany({ orderBy: { createdAt: 'desc' } });
+            return res.render('posts', {
+                posts,
+                error: `Kapasite aşımı! En fazla ${profileCount} beğeni, ${profileCount} yorum ve ${profileCount} paylaşım girebilirsiniz. (Toplam ${profileCount} aktif profiliniz var)`,
+                success: null
+            });
+        }
+
+        // Ana görevi oluştur
         const post = await prisma.postTask.create({
             data: {
                 searchKeyword: searchKeyword.trim(),
@@ -77,32 +84,27 @@ router.post('/add', async (req, res) => {
             }
         });
 
-        // Toplam görev sayısını hesapla
-        const totalTasks = likes + comments + shares;
+        // AKILLI DAĞITIM ALGORİTMASI
         let tasksCreated = 0;
 
-        // Görevleri profillere dağıt
-        for (let i = 0; i < totalTasks; i++) {
-            const profile = eligibleProfiles[i % eligibleProfiles.length];
+        // 1. Beğenileri Dağıt (0-index'ten başla)
+        for (let i = 0; i < likes; i++) {
+            const profile = eligibleProfiles[i];
+            await createBotTask(post.id, profile.id, 'like');
+            tasksCreated++;
+        }
 
-            let action = 'like';
-            if (i < likes) {
-                action = 'like';
-            } else if (i < likes + comments) {
-                action = 'comment';
-            } else {
-                action = 'share';
-            }
+        // 2. Yorumları Dağıt (Beğenilerin bittiği yerden başla - çaprazlama için)
+        for (let i = 0; i < comments; i++) {
+            const profile = eligibleProfiles[(likes + i) % profileCount];
+            await createBotTask(post.id, profile.id, 'comment');
+            tasksCreated++;
+        }
 
-            await prisma.botTask.create({
-                data: {
-                    profileId: profile.id,
-                    taskType: 'post_action',
-                    postTaskId: post.id,
-                    status: 'pending',
-                    result: action // Action tipini result'ta sakla
-                }
-            });
+        // 3. Paylaşımları Dağıt (Yorumların bittiği yerden başla)
+        for (let i = 0; i < shares; i++) {
+            const profile = eligibleProfiles[(likes + comments + i) % profileCount];
+            await createBotTask(post.id, profile.id, 'share');
             tasksCreated++;
         }
 
@@ -110,7 +112,7 @@ router.post('/add', async (req, res) => {
         res.render('posts', {
             posts,
             error: null,
-            success: `Görev oluşturuldu: ${likes} beğeni, ${comments} yorum, ${shares} paylaşım hedefi (${tasksCreated} görev ${eligibleProfiles.length} profile dağıtıldı)`
+            success: `Görev oluşturuldu: ${likes} beğeni, ${comments} yorum, ${shares} paylaşım hedefi (${tasksCreated} görev ${profileCount} profile çakışmasız dağıtıldı)`
         });
     } catch (error) {
         console.error('Post add error:', error);
@@ -118,6 +120,19 @@ router.post('/add', async (req, res) => {
         res.render('posts', { posts, error: 'Görev eklenemedi', success: null });
     }
 });
+
+// Helper: Bot görevi oluştur
+async function createBotTask(postTaskId, profileId, action) {
+    return await prisma.botTask.create({
+        data: {
+            profileId,
+            taskType: 'post_action',
+            postTaskId,
+            status: 'pending',
+            result: action
+        }
+    });
+}
 
 // Gönderi silme
 router.post('/delete/:id', async (req, res) => {
