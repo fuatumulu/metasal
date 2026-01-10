@@ -16,6 +16,16 @@ router.get('/', async (req, res) => {
             include: {
                 _count: {
                     select: { likedTargets: true, tasks: true }
+                },
+                tasks: {
+                    where: {
+                        status: { in: ['pending', 'processing'] }
+                    },
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    include: {
+                        target: true
+                    }
                 }
             }
         });

@@ -87,6 +87,7 @@
                                             <th>Profil Adı</th>
                                             <th>Vision ID</th>
                                             <th>Durum</th>
+                                            <th>Aktif Görev / Kuyruk</th>
                                             <th>Beğenilen</th>
                                             <th>Görevler</th>
                                             <th>Son Senkr.</th>
@@ -119,6 +120,29 @@
                                                                 <%= profile.status==='active' ? 'Aktif' : 'Devre Dışı'
                                                                     %>
                                                             </span>
+                                                        </td>
+                                                        <td>
+                                                            <% if (profile.tasks && profile.tasks.length> 0) { %>
+                                                                <% const task=profile.tasks[0]; %>
+                                                                    <div class="active-task-wrapper">
+                                                                        <span class="task-badge <%= task.status %>">
+                                                                            <%= task.status==='processing' ? '🔄' : '⏳'
+                                                                                %>
+                                                                                <%= task.taskType.toUpperCase() %>
+                                                                        </span>
+                                                                        <% if (task.target) { %>
+                                                                            <div class="task-target-info"
+                                                                                title="<%= task.target.url %>">
+                                                                                <%= task.target.name ||
+                                                                                    task.target.url.substring(0, 20)
+                                                                                    + '...' %>
+                                                                            </div>
+                                                                            <% } %>
+                                                                    </div>
+                                                                    <% } else { %>
+                                                                        <span class="text-muted"
+                                                                            style="font-size: 0.8rem;">- Boşta -</span>
+                                                                        <% } %>
                                                         </td>
                                                         <td>
                                                             <a href="/profiles/<%= profile.id %>/likes" class="link">
@@ -160,6 +184,45 @@
                             </div>
                         </div>
     </main>
+
+    <style>
+        .active-task-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .task-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+            width: fit-content;
+        }
+
+        .task-badge.pending {
+            background-color: #fff3cd;
+            color: #664d03;
+            border: 1px solid #ffe69c;
+        }
+
+        .task-badge.processing {
+            background-color: #cff4fc;
+            color: #055160;
+            border: 1px solid #9eeaf9;
+        }
+
+        .task-target-info {
+            font-size: 0.75rem;
+            color: #666;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    </style>
 </body>
 
 </html>
