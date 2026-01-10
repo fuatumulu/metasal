@@ -61,7 +61,8 @@ app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
             pendingTasks,
             totalTargets,
             totalPosts,
-            totalComments
+            totalComments,
+            logs
         ] = await Promise.all([
             prisma.visionProfile.count(),
             prisma.visionProfile.count({ where: { status: 'active' } }),
