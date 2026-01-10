@@ -282,7 +282,7 @@ async function moveToCenterOfScreen(page) {
 }
 
 /**
- * Belirli süre boyunca yavaş scroll yaparak arama kelimesini ara
+ * Belirli süre boyunca human-like scroll yaparak arama kelimesini ara
  * @param {object} page - Puppeteer page
  * @param {string} keyword - Aranacak kelime
  * @param {number} durationSeconds - Arama süresi (saniye)
@@ -317,14 +317,23 @@ async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
             return true;
         }
 
-        // Yavaşça aşağı scroll et - 2 saniyede bir 500px kaydır
-        await page.evaluate(() => {
-            window.scrollBy({ top: 500, left: 0, behavior: 'smooth' });
-        });
+        // Human-like scroll: rastgele miktar ve yön
+        const scrollAmount = Math.floor(Math.random() * 400) + 300; // 300-700px arası
+        const shouldScrollUp = Math.random() < 0.08; // %8 ihtimalle yukarı scroll
+
+        await page.evaluate((amount, up) => {
+            const direction = up ? -1 : 1;
+            window.scrollBy({
+                top: amount * direction,
+                left: 0,
+                behavior: 'smooth'
+            });
+        }, scrollAmount, shouldScrollUp);
         scrollCount++;
 
-        // Scroll aralığı - 2 saniye bekle
-        await sleep(2000);
+        // Human-like bekleme: 1.5-3 saniye arası rastgele
+        const waitTime = Math.floor(Math.random() * 1500) + 1500;
+        await sleep(waitTime);
     }
 
     console.log(`${durationSeconds} saniye doldu, gönderi bulunamadı (${scrollCount} scroll yapıldı)`);

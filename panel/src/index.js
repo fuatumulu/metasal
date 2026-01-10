@@ -96,6 +96,17 @@ app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
     }
 });
 
+// Dashboard: Logları temizle
+app.post('/dashboard/clear-logs', requireSetup, requireAuth, async (req, res) => {
+    try {
+        await prisma.botLog.deleteMany({});
+        res.redirect('/dashboard');
+    } catch (error) {
+        console.error('Clear logs error:', error);
+        res.redirect('/dashboard');
+    }
+});
+
 // Home redirect
 app.get('/', async (req, res) => {
     const admin = await prisma.admin.findFirst();
