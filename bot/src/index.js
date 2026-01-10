@@ -127,17 +127,42 @@ async function processTask(task) {
 
             case 'post_action':
                 if (task.postTask) {
-                    // Kelimeye göre gönderi bul
+                    // === POST ACTION AKIŞI ===
+                    // 1. Stabilizasyon: 10 saniye bekle ve sayfayı yenile
+                    console.log('\\n--- POST ACTION: Stabilizasyon başlatılıyor ---');
+                    console.log('10 saniye bekleniyor...');
+                    await sleep(10000);
+
+                    console.log('Sayfa yenileniyor...');
+                    try {
+                        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+                    } catch (e) {
+                        console.log('Reload uyarısı (devam ediliyor):', e.message);
+                    }
+                    await sleep(2000);
+
+                    // 2. Kelimeye göre gönderi bul (40sn + 30sn + 30sn retry mekanizması)
+                    console.log('\\n--- POST ACTION: Gönderi aranıyor ---');
                     const found = await findPostByKeyword(page, task.postTask.searchKeyword);
 
                     if (!found) {
-                        await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı');
+                        // Gönderi bulunamadı - profili kapat ve görevi başka profile devret
+                        console.log('\\n--- GÖREV DEVRİ ---');
+                        console.log('Gönderi bulunamadı. Profil kapatılıyor ve görev başka profile devredilecek.');
+
+                        // Görevi pending'e çevir (başka profil devralacak)
+                        await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı - başka profile devrediliyor');
+
+                        // Tarayıcıyı kapat
+                        console.log('Tarayıcı kapatılıyor...');
+                        await stopProfile(folderId, visionId);
                         return;
                     }
 
-                    // Action tipini botTask.result'tan al (Panel görev oluştururken oraya yazdı)
+                    // 3. Gönderi bulundu - Action tipini al ve işlemi gerçekleştir
                     const action = task.result; // like, comment, share
-                    console.log(`Aksiyon gerçekleştiriliyor: ${action}`);
+                    console.log(`\\n--- POST ACTION: ${action.toUpperCase()} işlemi yapılıyor ---`);
+                    await sendLog('info', 'POST_ACTION_START', `${action} işlemi başlatılıyor`, { action, postTaskId: task.postTaskId });
 
                     switch (action) {
                         case 'like':
@@ -154,11 +179,13 @@ async function processTask(task) {
                                 } else {
                                     console.error('Yorum havuzu boş');
                                     await reportTaskResult(task.id, 'failed', 'Yorum havuzu boş');
+                                    await stopProfile(folderId, visionId);
                                     return;
                                 }
                             } catch (e) {
                                 console.error('Yorum çekilemedi:', e.message);
                                 await reportTaskResult(task.id, 'failed', 'Yorum havuzuna ulaşılamadı');
+                                await stopProfile(folderId, visionId);
                                 return;
                             }
                             break;

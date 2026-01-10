@@ -46,13 +46,17 @@ router.post('/add', async (req, res) => {
 
     try {
         // En az bir hedef beğenmiş aktif profilleri bul
+        // En uzun süredir çalışmamış profil önce seçilsin (lastRunAt null olanlar en başta)
         const eligibleProfiles = await prisma.visionProfile.findMany({
             where: {
                 status: 'active',
                 likedTargets: {
                     some: {} // En az bir tane varsa
                 }
-            }
+            },
+            orderBy: [
+                { lastRunAt: 'asc' }  // En eski (null dahil) en başta
+            ]
         });
 
         if (eligibleProfiles.length === 0) {

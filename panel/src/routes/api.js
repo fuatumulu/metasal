@@ -27,6 +27,14 @@ router.get('/tasks/pending', async (req, res) => {
             data: { status: 'processing' }
         });
 
+        // Profil varsa lastRunAt güncelle
+        if (task.profileId) {
+            await prisma.visionProfile.update({
+                where: { id: task.profileId },
+                data: { lastRunAt: new Date() }
+            });
+        }
+
         res.json({ task });
     } catch (error) {
         console.error('Get pending task error:', error);

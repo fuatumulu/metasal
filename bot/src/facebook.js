@@ -271,69 +271,202 @@ async function likeTarget(page, targetUrl, targetType) {
 }
 
 /**
- * Kelimeye göre gönderi bul
+ * Mouse'u ekran ortasına getir
+ */
+async function moveToCenterOfScreen(page) {
+    const viewport = await page.viewport();
+    const centerX = viewport ? viewport.width / 2 : 960;
+    const centerY = viewport ? viewport.height / 2 : 540;
+    await page.mouse.move(centerX, centerY);
+    console.log(`Mouse ekran ortasına getirildi: (${centerX}, ${centerY})`);
+}
+
+/**
+ * Belirli süre boyunca yavaş scroll yaparak arama kelimesini ara
+ * @param {object} page - Puppeteer page
+ * @param {string} keyword - Aranacak kelime
+ * @param {number} durationSeconds - Arama süresi (saniye)
+ * @returns {boolean} - Bulundu mu
+ */
+async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
+    const startTime = Date.now();
+    const endTime = startTime + (durationSeconds * 1000);
+    let scrollCount = 0;
+
+    console.log(`${durationSeconds} saniye boyunca "${keyword}" aranıyor...`);
+
+    while (Date.now() < endTime) {
+        // Sayfadaki tüm gönderileri tara
+        const found = await page.evaluate((searchText) => {
+            const posts = document.querySelectorAll('[data-ad-preview="message"], [data-ad-comet-preview="message"], div[dir="auto"]');
+            for (const post of posts) {
+                if (post.textContent.toLowerCase().includes(searchText.toLowerCase())) {
+                    // Gönderiyi bulduk, tıklanabilir elementi bul
+                    const postContainer = post.closest('[role="article"]') || post.closest('div[data-pagelet]');
+                    if (postContainer) {
+                        postContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }, keyword);
+
+        if (found) {
+            console.log(`Gönderi bulundu! (${scrollCount} scroll sonrası)`);
+            return true;
+        }
+
+        // Yavaşça aşağı scroll et - 2 saniyede bir 500px kaydır
+        await page.evaluate(() => {
+            window.scrollBy({ top: 500, left: 0, behavior: 'smooth' });
+        });
+        scrollCount++;
+
+        // Scroll aralığı - 2 saniye bekle
+        await sleep(2000);
+    }
+
+    console.log(`${durationSeconds} saniye doldu, gönderi bulunamadı (${scrollCount} scroll yapıldı)`);
+    return false;
+}
+
+/**
+ * Kelimeye göre gönderi bul - Retry mekanizması ile
+ * Akış: 40sn ara -> bulamazsa yenile + 30sn ara -> bulamazsa yenile + 30sn ara -> başarısız
  */
 async function findPostByKeyword(page, keyword) {
     try {
+        console.log(`\\n========================================`);
         console.log(`Gönderi aranıyor: "${keyword}"`);
+        console.log(`========================================`);
+        await sendLog('info', 'POST_SEARCH_START', `Gönderi aranıyor: "${keyword}"`, { keyword });
 
-        // Ana sayfaya git
-        await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
-        await sleep(2000);
+        // Mouse'u ekran ortasına getir
+        await moveToCenterOfScreen(page);
 
-        // Sayfayı birkaç kez scroll et ve gönderi ara
-        for (let i = 0; i < 10; i++) {
-            // Sayfadaki tüm gönderileri tara
-            const found = await page.evaluate((searchText) => {
-                const posts = document.querySelectorAll('[data-ad-preview="message"], [data-ad-comet-preview="message"], div[dir="auto"]');
-                for (const post of posts) {
-                    if (post.textContent.toLowerCase().includes(searchText.toLowerCase())) {
-                        // Gönderiyi bulduk, tıklanabilir elementi bul
-                        const postContainer = post.closest('[role="article"]') || post.closest('div[data-pagelet]');
-                        if (postContainer) {
-                            postContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }, keyword);
+        // 1. Deneme: 40 saniye boyunca ara
+        console.log('\\n--- 1. ARAMA DENEMESİ (40 saniye) ---');
+        let found = await scrollAndSearchForDuration(page, keyword, 40);
 
-            if (found) {
-                console.log('Gönderi bulundu');
-                await sleep(1000);
-                return true;
-            }
-
-            // Scroll et
-            await page.evaluate(() => {
-                window.scrollBy(0, 800);
-            });
-            await sleep(2000);
+        if (found) {
+            await sleep(1000);
+            await sendLog('success', 'POST_FOUND', `Gönderi bulundu: "${keyword}"`, { keyword, attempt: 1 });
+            return true;
         }
 
-        console.log('Gönderi bulunamadı');
+        // 2. Deneme: Sayfa yenile + 30 saniye ara
+        console.log('\\n--- 2. ARAMA DENEMESİ (Sayfa yenileniyor + 30 saniye) ---');
+        await page.reload({ waitUntil: 'networkidle2' });
+        await sleep(3000);
+        await moveToCenterOfScreen(page);
+
+        found = await scrollAndSearchForDuration(page, keyword, 30);
+
+        if (found) {
+            await sleep(1000);
+            await sendLog('success', 'POST_FOUND', `Gönderi bulundu: "${keyword}"`, { keyword, attempt: 2 });
+            return true;
+        }
+
+        // 3. Deneme: Sayfa yenile + 30 saniye ara
+        console.log('\\n--- 3. ARAMA DENEMESİ (Sayfa yenileniyor + 30 saniye) ---');
+        await page.reload({ waitUntil: 'networkidle2' });
+        await sleep(3000);
+        await moveToCenterOfScreen(page);
+
+        found = await scrollAndSearchForDuration(page, keyword, 30);
+
+        if (found) {
+            await sleep(1000);
+            await sendLog('success', 'POST_FOUND', `Gönderi bulundu: "${keyword}"`, { keyword, attempt: 3 });
+            return true;
+        }
+
+        // Tüm denemeler başarısız
+        console.log('\\n--- TÜM DENEMELER BAŞARISIZ ---');
+        console.log('Gönderi bulunamadı. Görev başka profile devredilecek.');
+        await sendLog('warning', 'POST_NOT_FOUND', `Gönderi bulunamadı: "${keyword}" (3 deneme sonrası)`, { keyword });
         return false;
     } catch (error) {
         console.error('Gönderi arama hatası:', error.message);
+        await sendLog('error', 'POST_SEARCH_ERROR', `Gönderi arama hatası: ${error.message}`, { keyword, error: error.message });
         return false;
     }
 }
 
 /**
- * Mevcut gönderiyi beğen (scroll sonrası görünür gönderi)
+ * Post altındaki Like/Comment/Share butonlarını bul (metin tabanlı arama)
+ * @returns {object} - { likeBtn, commentBtn, shareBtn } elementleri
+ */
+async function findPostActionButtons(page) {
+    return await page.evaluate(() => {
+        const result = { likeBtn: null, commentBtn: null, shareBtn: null };
+
+        // Like butonları: "Like" veya "Beğen" yazısını ara
+        const likeTexts = ['like', 'beğen'];
+        // Comment butonları: "Comment" veya "Yorum yap" yazısını ara
+        const commentTexts = ['comment', 'yorum yap', 'yorum'];
+        // Share butonları: "Share" veya "Paylaş" yazısını ara
+        const shareTexts = ['share', 'paylaş'];
+
+        // Görünür alandaki tüm butonları ve role="button" elementlerini tara
+        const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+
+        for (const el of allElements) {
+            const text = el.textContent.trim().toLowerCase();
+            const rect = el.getBoundingClientRect();
+
+            // Görünür alanda mı?
+            if (rect.top < 0 || rect.top > window.innerHeight) continue;
+
+            // Like butonu mu?
+            if (!result.likeBtn && likeTexts.some(t => text === t)) {
+                result.likeBtn = el;
+            }
+
+            // Comment butonu mu?
+            if (!result.commentBtn && commentTexts.some(t => text === t)) {
+                result.commentBtn = el;
+            }
+
+            // Share butonu mu?
+            if (!result.shareBtn && shareTexts.some(t => text === t)) {
+                result.shareBtn = el;
+            }
+        }
+
+        return {
+            hasLike: !!result.likeBtn,
+            hasComment: !!result.commentBtn,
+            hasShare: !!result.shareBtn
+        };
+    });
+}
+
+/**
+ * Mevcut gönderiyi beğen - Metin tabanlı arama ("Like" / "Beğen")
  */
 async function likeCurrentPost(page) {
     try {
         console.log('Gönderi beğeniliyor...');
+        await sendLog('info', 'POST_LIKE_ATTEMPT', 'Beğeni butonu aranıyor...');
 
         const liked = await page.evaluate(() => {
-            // Görünür alandaki Like butonunu bul
-            const likeButtons = document.querySelectorAll('[aria-label*="Like"], [aria-label*="Beğen"]');
-            for (const btn of likeButtons) {
-                const rect = btn.getBoundingClientRect();
-                if (rect.top > 0 && rect.top < window.innerHeight) {
-                    btn.click();
+            const likeTexts = ['like', 'beğen'];
+            const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+
+            for (const el of allElements) {
+                const text = el.textContent.trim().toLowerCase();
+                const rect = el.getBoundingClientRect();
+
+                // Görünür alanda mı?
+                if (rect.top < 0 || rect.top > window.innerHeight) continue;
+
+                if (likeTexts.some(t => text === t)) {
+                    // Tıklanabilir elementi bul
+                    const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                    clickable.click();
                     return true;
                 }
             }
@@ -348,27 +481,38 @@ async function likeCurrentPost(page) {
         }
 
         console.log('Beğen butonu bulunamadı');
+        await sendLog('warning', 'POST_LIKE_NOT_FOUND', 'Beğen butonu bulunamadı');
         return false;
     } catch (error) {
         console.error('Gönderi beğenme hatası:', error.message);
+        await sendLog('error', 'POST_LIKE_ERROR', `Beğeni hatası: ${error.message}`);
         return false;
     }
 }
 
 /**
- * Mevcut gönderiye yorum yap
+ * Mevcut gönderiye yorum yap - İframe/popup desteği ile
+ * "Write a public comment" / "Herkese açık yorum yazın" alanını arar
  */
 async function commentCurrentPost(page, commentText) {
     try {
         console.log('Yorum yapılıyor...');
+        await sendLog('info', 'POST_COMMENT_ATTEMPT', `Yorum butonu aranıyor... Yorum: "${commentText}"`);
 
-        // Yorum butonuna tıkla
+        // Yorum butonuna tıkla (metin tabanlı)
         const clicked = await page.evaluate(() => {
-            const commentButtons = document.querySelectorAll('[aria-label*="Comment"], [aria-label*="Yorum"]');
-            for (const btn of commentButtons) {
-                const rect = btn.getBoundingClientRect();
-                if (rect.top > 0 && rect.top < window.innerHeight) {
-                    btn.click();
+            const commentTexts = ['comment', 'yorum yap', 'yorum'];
+            const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+
+            for (const el of allElements) {
+                const text = el.textContent.trim().toLowerCase();
+                const rect = el.getBoundingClientRect();
+
+                if (rect.top < 0 || rect.top > window.innerHeight) continue;
+
+                if (commentTexts.some(t => text === t)) {
+                    const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                    clickable.click();
                     return true;
                 }
             }
@@ -377,47 +521,115 @@ async function commentCurrentPost(page, commentText) {
 
         if (!clicked) {
             console.log('Yorum butonu bulunamadı');
+            await sendLog('warning', 'POST_COMMENT_NOT_FOUND', 'Yorum butonu bulunamadı');
             return false;
         }
 
-        await sleep(1500);
+        // Butona tıkladıktan sonra 1 saniye bekle (popup/iframe açılması için)
+        console.log('Yorum alanı açılıyor, 1 saniye bekleniyor...');
+        await sleep(1000);
 
-        // Yorum alanına yaz
-        const commentBox = await page.$('[contenteditable="true"][role="textbox"]');
-        if (commentBox) {
-            await commentBox.click();
-            await sleep(500);
-            await page.keyboard.type(commentText, { delay: 50 });
-            await sleep(500);
-            await page.keyboard.press('Enter');
-            await sleep(2000);
-            console.log('Yorum yapıldı');
-            await sendLog('success', 'POST_COMMENT_SUCCESS', `Yorum yapıldı: ${commentText}`);
-            return true;
+        // "Write a public comment" alanını ara (TR: "Herkese açık yorum yazın")
+        const commentInputFound = await page.evaluate(() => {
+            const placeholderTexts = [
+                'write a public comment',
+                'herkese açık yorum yazın',
+                'write a comment',
+                'yorum yazın',
+                'yorum yap'
+            ];
+
+            // Önce iframe kontrolü
+            const iframes = document.querySelectorAll('iframe');
+            for (const iframe of iframes) {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const inputs = iframeDoc.querySelectorAll('[contenteditable="true"], input, textarea');
+                    for (const input of inputs) {
+                        const placeholder = (input.getAttribute('placeholder') || input.getAttribute('aria-placeholder') || '').toLowerCase();
+                        if (placeholderTexts.some(p => placeholder.includes(p))) {
+                            input.focus();
+                            input.click();
+                            return { found: true, isIframe: true };
+                        }
+                    }
+                } catch (e) {
+                    // Cross-origin iframe, atlaniıyor
+                }
+            }
+
+            // Normal sayfa içinde ara
+            const allInputs = document.querySelectorAll('[contenteditable="true"][role="textbox"], [placeholder*="comment"], [placeholder*="yorum"], [aria-placeholder*="comment"], [aria-placeholder*="yorum"]');
+            for (const input of allInputs) {
+                const rect = input.getBoundingClientRect();
+                if (rect.top > 0 && rect.top < window.innerHeight) {
+                    input.focus();
+                    input.click();
+                    return { found: true, isIframe: false };
+                }
+            }
+
+            // Fallback: herhangi bir contenteditable textbox
+            const fallback = document.querySelector('[contenteditable="true"][role="textbox"]');
+            if (fallback) {
+                fallback.focus();
+                fallback.click();
+                return { found: true, isIframe: false, fallback: true };
+            }
+
+            return { found: false };
+        });
+
+        if (!commentInputFound.found) {
+            console.log('Yorum alanı bulunamadı');
+            await sendLog('warning', 'POST_COMMENT_INPUT_NOT_FOUND', 'Yorum giriş alanı bulunamadı');
+            return false;
         }
 
-        console.log('Yorum alanı bulunamadı');
-        return false;
+        console.log(`Yorum alanı bulundu (iframe: ${commentInputFound.isIframe}, fallback: ${commentInputFound.fallback || false})`);
+        await sleep(500);
+
+        // Yorumu yaz
+        await page.keyboard.type(commentText, { delay: 50 });
+        console.log('Yorum yazıldı, Enter ile gönderiliyor...');
+        await sleep(500);
+
+        // Enter tuşuna bas
+        await page.keyboard.press('Enter');
+        await sleep(2000);
+
+        console.log('Yorum yapıldı');
+        await sendLog('success', 'POST_COMMENT_SUCCESS', `Yorum başarıyla yapıldı: "${commentText}"`);
+        return true;
     } catch (error) {
         console.error('Yorum hatası:', error.message);
+        await sendLog('error', 'POST_COMMENT_ERROR', `Yorum hatası: ${error.message}`);
         return false;
     }
 }
 
 /**
- * Mevcut gönderiyi paylaş
+ * Mevcut gönderiyi paylaş - Metin tabanlı arama ("Share" / "Paylaş")
  */
 async function shareCurrentPost(page) {
     try {
         console.log('Gönderi paylaşılıyor...');
+        await sendLog('info', 'POST_SHARE_ATTEMPT', 'Paylaş butonu aranıyor...');
 
-        // Share butonuna tıkla
+        // Share butonuna tıkla (metin tabanlı)
         const clicked = await page.evaluate(() => {
-            const shareButtons = document.querySelectorAll('[aria-label*="Share"], [aria-label*="Paylaş"]');
-            for (const btn of shareButtons) {
-                const rect = btn.getBoundingClientRect();
-                if (rect.top > 0 && rect.top < window.innerHeight) {
-                    btn.click();
+            const shareTexts = ['share', 'paylaş'];
+            const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+
+            for (const el of allElements) {
+                const text = el.textContent.trim().toLowerCase();
+                const rect = el.getBoundingClientRect();
+
+                if (rect.top < 0 || rect.top > window.innerHeight) continue;
+
+                if (shareTexts.some(t => text === t)) {
+                    const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                    clickable.click();
                     return true;
                 }
             }
@@ -426,17 +638,23 @@ async function shareCurrentPost(page) {
 
         if (!clicked) {
             console.log('Paylaş butonu bulunamadı');
+            await sendLog('warning', 'POST_SHARE_NOT_FOUND', 'Paylaş butonu bulunamadı');
             return false;
         }
 
         await sleep(1500);
 
-        // "Share now" seçeneğine tıkla
+        // "Share now" / "Şimdi paylaş" seçeneğine tıkla
         const shared = await page.evaluate(() => {
-            const items = document.querySelectorAll('[role="menuitem"], [role="button"]');
+            const shareNowTexts = [
+                'share now', 'şimdi paylaş', 'share to feed',
+                'share to your feed', 'hemen paylaş', 'duvarına paylaş'
+            ];
+            const items = document.querySelectorAll('[role="menuitem"], [role="button"], div[tabindex="0"]');
+
             for (const item of items) {
-                const text = item.textContent.toLowerCase();
-                if (text.includes('share now') || text.includes('şimdi paylaş') || text.includes('share to feed')) {
+                const text = item.textContent.toLowerCase().trim();
+                if (shareNowTexts.some(t => text.includes(t))) {
                     item.click();
                     return true;
                 }
@@ -452,9 +670,11 @@ async function shareCurrentPost(page) {
         }
 
         console.log('Paylaş seçeneği bulunamadı');
+        await sendLog('warning', 'POST_SHARE_OPTION_NOT_FOUND', 'Paylaş menü seçeneği bulunamadı');
         return false;
     } catch (error) {
         console.error('Paylaşma hatası:', error.message);
+        await sendLog('error', 'POST_SHARE_ERROR', `Paylaşma hatası: ${error.message}`);
         return false;
     }
 }
@@ -482,7 +702,10 @@ module.exports = {
     sleep,
     login,
     likeTarget,
+    moveToCenterOfScreen,
+    scrollAndSearchForDuration,
     findPostByKeyword,
+    findPostActionButtons,
     likeCurrentPost,
     commentCurrentPost,
     shareCurrentPost,

@@ -16,15 +16,17 @@ model Admin {
 
 // Vision Antidetect Browser Profilleri
 model VisionProfile {
-  id           Int                  @id @default(autoincrement())
-  visionId     String               @unique  // Vision API'dan gelen UUID
-  folderId     String                        // Vision API'dan gelen Folder UUID
-  name         String                        // Profil adı
-  status       String               @default("active") // active, disabled
-  lastSyncedAt DateTime?
-  createdAt    DateTime             @default(now())
-  likedTargets ProfileLikedTarget[]
-  tasks        BotTask[]
+  id               Int                      @id @default(autoincrement())
+  visionId         String                   @unique  // Vision API'dan gelen UUID
+  folderId         String                            // Vision API'dan gelen Folder UUID
+  name             String                            // Profil adı
+  status           String                   @default("active") // active, disabled
+  lastSyncedAt     DateTime?
+  lastRunAt        DateTime?                         // En son çalıştırılma zamanı
+  createdAt        DateTime                 @default(now())
+  likedTargets     ProfileLikedTarget[]
+  tasks            BotTask[]
+  postInteractions ProfilePostInteraction[]
 }
 
 // Profillerin beğendiği hedefler (tekrar beğenmeyi önlemek için)
@@ -52,17 +54,18 @@ model Target {
 }
 
 model PostTask {
-  id             Int       @id @default(autoincrement())
-  searchKeyword  String    // Gönderide aranacak kelime öbeği
-  targetLikes    Int       @default(0)
-  targetComments Int       @default(0)
-  targetShares   Int       @default(0)
-  doneLikes      Int       @default(0)
-  doneComments   Int       @default(0)
-  doneShares     Int       @default(0)
-  status         String    @default("pending") // pending, in_progress, completed, failed
-  createdAt      DateTime  @default(now())
-  tasks          BotTask[]
+  id               Int                      @id @default(autoincrement())
+  searchKeyword    String                   // Gönderide aranacak kelime öbeği
+  targetLikes      Int                      @default(0)
+  targetComments   Int                      @default(0)
+  targetShares     Int                      @default(0)
+  doneLikes        Int                      @default(0)
+  doneComments     Int                      @default(0)
+  doneShares       Int                      @default(0)
+  status           String                   @default("pending") // pending, in_progress, completed, failed
+  createdAt        DateTime                 @default(now())
+  tasks            BotTask[]
+  postInteractions ProfilePostInteraction[]
 }
 
 model Comment {
@@ -95,4 +98,17 @@ model BotLog {
   message   String   @db.Text
   details   String?  @db.Text // JSON formatında ek detaylar
   createdAt DateTime @default(now())
+}
+
+// Profillerin post etkileşim geçmişi (aynı görevi tekrar yapmasını önlemek için)
+model ProfilePostInteraction {
+  id         Int           @id @default(autoincrement())
+  profile    VisionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId  Int
+  postTask   PostTask      @relation(fields: [postTaskId], references: [id], onDelete: Cascade)
+  postTaskId Int
+  action     String        // like, comment, share
+  createdAt  DateTime      @default(now())
+
+  @@unique([profileId, postTaskId, action])
 }
