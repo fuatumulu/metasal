@@ -219,6 +219,25 @@ router.post('/logs', async (req, res) => {
                 details: details ? JSON.stringify(details) : null
             }
         });
+
+        // OTOMATİK TEMİZLEME: En güncel 50 logu tut, gerisini sil
+        const logCount = await prisma.botLog.count();
+        if (logCount > 50) {
+            const lastLogs = await prisma.botLog.findMany({
+                take: 50,
+                orderBy: { createdAt: 'desc' },
+                select: { id: true }
+            });
+
+            const idsToKeep = lastLogs.map(l => l.id);
+
+            await prisma.botLog.deleteMany({
+                where: {
+                    id: { notIn: idsToKeep }
+                }
+            });
+        }
+
         res.json({ success: true });
     } catch (error) {
         console.error('Log save error:', error);
