@@ -52,6 +52,15 @@ router.post('/tasks/:id/result', async (req, res) => {
     }
 
     try {
+        // Önce görevin orijinal halini (özellikle result içindeki action tipini) alalım
+        const originalTask = await prisma.botTask.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!originalTask) {
+            return res.status(404).json({ error: 'Görev bulunamadı' });
+        }
+
         const task = await prisma.botTask.update({
             where: { id: parseInt(id) },
             data: { status, result: result || null },
@@ -103,8 +112,8 @@ router.post('/tasks/:id/result', async (req, res) => {
             // Bot'un gönderdiği JSON içindeki action'ı alalım veya görevin orijinal halinden bakalım.
 
             // Not: BotTask.result alanını görev oluştururken action tipi için kullandık. 
-            // Bot report ederken status: 'completed' gönderdiğinde biz o action tipini biliyoruz.
-            const action = task.result; // like, comment, share
+            // Bot report ederken status: 'completed' gönderdiğinde biz o action tipini originalTask'tan almalıyız.
+            const action = originalTask.result; // like, comment, share
 
             const updateData = {};
             if (action === 'like') updateData.doneLikes = { increment: 1 };
