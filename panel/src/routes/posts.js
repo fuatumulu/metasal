@@ -134,6 +134,79 @@ async function createBotTask(postTaskId, profileId, action) {
     });
 }
 
+// Görevi yeniden gönder (requeue)
+router.post('/requeue/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const post = await prisma.postTask.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!post) {
+            return res.redirect('/posts');
+        }
+
+        // Mevcut bot görevlerini sil
+        await prisma.botTask.deleteMany({
+            where: { postTaskId: parseInt(id) }
+        });
+
+        // Sayaçları sıfırla
+        await prisma.postTask.update({
+            where: { id: parseInt(id) },
+            data: {
+                doneLikes: 0,
+                doneComments: 0,
+                doneShares: 0,
+                status: 'pending'
+            }
+        });
+
+        // En az bir hedef beğenmiş aktif profilleri bul
+        const eligibleProfiles = await prisma.visionProfile.findMany({
+            where: {
+                status: 'active',
+                likedTargets: { some: {} }
+            },
+            orderBy: [{ lastRunAt: 'asc' }]
+        });
+
+        const profileCount = eligibleProfiles.length;
+        if (profileCount === 0) {
+            return res.redirect('/posts');
+        }
+
+        // Görevleri yeniden oluştur
+        const likes = post.targetLikes;
+        const comments = post.targetComments;
+        const shares = post.targetShares;
+
+        // 1. Beğenileri Dağıt
+        for (let i = 0; i < likes && i < profileCount; i++) {
+            const profile = eligibleProfiles[i];
+            await createBotTask(post.id, profile.id, 'like');
+        }
+
+        // 2. Yorumları Dağıt
+        for (let i = 0; i < comments && i < profileCount; i++) {
+            const profile = eligibleProfiles[(likes + i) % profileCount];
+            await createBotTask(post.id, profile.id, 'comment');
+        }
+
+        // 3. Paylaşımları Dağıt
+        for (let i = 0; i < shares && i < profileCount; i++) {
+            const profile = eligibleProfiles[(likes + comments + i) % profileCount];
+            await createBotTask(post.id, profile.id, 'share');
+        }
+
+        res.redirect('/posts');
+    } catch (error) {
+        console.error('Post requeue error:', error);
+        res.redirect('/posts');
+    }
+});
+
 // Gönderi silme
 router.post('/delete/:id', async (req, res) => {
     const { id } = req.params;

@@ -21,7 +21,7 @@
                 <a href="/profiles">🖥️ Profiller</a>
             </li>
             <li>
-                <a href="/targets">🎯 Hedefler</a>
+                <a href="/targets">📄 Gruplar/Sayfalar</a>
             </li>
             <li class="active">
                 <a href="/posts">📝 Gönderiler</a>
@@ -144,6 +144,11 @@
                                                             </span>
                                                         </td>
                                                         <td class="actions">
+                                                            <form action="/posts/requeue/<%= post.id %>" method="POST"
+                                                                style="display:inline; margin-right: 5px;">
+                                                                <button type="submit" class="btn btn-sm btn-warning">🔄
+                                                                    Yeniden Gönder</button>
+                                                            </form>
                                                             <form action="/posts/delete/<%= post.id %>" method="POST"
                                                                 style="display:inline"
                                                                 onsubmit="return confirm('Bu görevi silmek istediğinize emin misiniz?')">
