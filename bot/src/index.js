@@ -112,11 +112,30 @@ async function processTask(task, threadId) {
 
         console.log(`[Thread-${threadId}] Profil başlatılıyor: ${profile.name}`);
 
-        // Browser'ı başlat
-        browser = await startProfile(folderId, visionId);
+        // Browser'ı başlat (3 deneme, 5sn arayla)
+        let startAttempts = 0;
+        const maxStartAttempts = 3;
+
+        while (startAttempts < maxStartAttempts) {
+            startAttempts++;
+            console.log(`[Thread-${threadId}] Browser başlatma denemesi ${startAttempts}/${maxStartAttempts}...`);
+
+            browser = await startProfile(folderId, visionId);
+            if (browser) break;
+
+            if (startAttempts < maxStartAttempts) {
+                console.log(`[Thread-${threadId}] Browser başlatılamadı, 5 saniye sonra tekrar denenecek...`);
+                await sleep(5000);
+            }
+        }
+
         if (!browser) {
-            console.error(`[Thread-${threadId}] Browser başlatılamadı`);
+            console.error(`[Thread-${threadId}] Browser ${maxStartAttempts} denemede başlatılamadı`);
             await reportTaskResult(task.id, 'failed', 'Browser başlatılamadı veya Vision profil meşgul');
+
+            // Carrier kilidini aç (IP değiştirmeye gerek yok çünkü profil açılmadı)
+            console.log(`[Thread-${threadId}] Browser fail - carrier kilidi açılıyor...`);
+            unlockCarrier(proxyHost);
             return;
         }
 

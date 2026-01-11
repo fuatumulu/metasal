@@ -159,6 +159,8 @@ async function changeIP(proxyHost) {
 
     const state = getCarrierState(proxyHost);
     state.changePending = true;
+    // Cooldown'u IP change başlarken başlat (IP change süresi cooldown'a dahil olsun)
+    state.lastChangeTime = Date.now();
 
     console.log(`[ProxyManager] IP değiştirme başlatıldı: ${proxyHost}`);
     console.log(`[ProxyManager] Change URL: ${changeUrl}`);
@@ -182,6 +184,7 @@ async function changeIP(proxyHost) {
                 console.log(`[ProxyManager] ✓ IP değiştirildi: ${data.EXT_IP1} -> ${data.EXT_IP2}`);
                 console.log(`[ProxyManager] Yeni IP: ${data.ext_ip}, Süre: ${data.total_time}sn`);
                 success = true;
+                // Başarılı olunca lastChangeTime'ı güncelle (cooldown tam olarak şu andan itibaren)
                 state.lastChangeTime = Date.now();
             } else {
                 // Failure - 60sn bekle ve tekrar dene
