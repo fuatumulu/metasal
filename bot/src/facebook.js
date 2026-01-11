@@ -191,8 +191,8 @@ async function likeTarget(page, targetUrl, targetType) {
 
                 if (element) {
                     await element.asElement()?.click();
-                    console.log('Tıklandı, doğrulanıyor...');
-                    await sleep(4000); // Facebook'un durumu güncellemesi için biraz daha fazla bekle
+                    console.log('Tıklandı, doğrulanıyor (10sn bekleniyor)...');
+                    await sleep(10000); // Facebook'un durumu güncellemesi için 10 saniye bekle
 
                     // DOĞRULAMA: Metin değişti mi?
                     current = await getStatus();
@@ -246,8 +246,8 @@ async function likeTarget(page, targetUrl, targetType) {
 
                 if (element) {
                     await element.asElement()?.click();
-                    console.log('Tıklandı, doğrulanıyor...');
-                    await sleep(4000);
+                    console.log('Tıklandı, doğrulanıyor (10sn bekleniyor)...');
+                    await sleep(10000);
 
                     current = await getStatus();
                     if (current.status === 'active') {
