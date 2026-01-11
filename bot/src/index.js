@@ -11,8 +11,8 @@ const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
 const PORT = process.env.BOT_PORT || 3001;
 const PANEL_URL = process.env.PANEL_URL || 'http://localhost:3000';
 
-// Thread ayarları
-const THREAD_COUNT = parseInt(process.env.THREAD_COUNT) || 1;
+// Thread ayarları - carrier sayısına göre dinamik olarak belirlenir
+let THREAD_COUNT = 1; // Başlangıç değeri, loadProxyConfig sonrası güncellenir
 const THREAD_DELAY = parseInt(process.env.THREAD_DELAY) || 35000; // Thread'ler arası bekleme (ms)
 
 // Global: Son profil başlatma zamanı (thread'ler arası delay için)
@@ -94,14 +94,16 @@ async function processTask(task, threadId) {
     const profile = task.profile;
     const visionId = profile.visionId;
     const folderId = profile.folderId;
-    const proxyHost = profile.proxyHost; // Profilin kullandığı proxy
+    // proxyHost yoksa DEFAULT carrier kullan (tüm profiller aynı carrier gibi davranır)
+    const proxyHost = profile.proxyHost || 'DEFAULT';
     let browser = null;
 
     try {
         // Carrier'ı atomik olarak kilitle (kontrol + kilitleme tek seferde)
         if (!tryLockCarrier(proxyHost, visionId)) {
-            console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul veya cooldown'da, görev atlanıyor...`);
-            // Görevi pending olarak bırak, başka thread denesin
+            console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul, görev tekrar pending yapılıyor...`);
+            // Görevi tekrar pending yap - başka thread alabilsin
+            await reportTaskResult(task.id, 'pending', 'Carrier meşgul - yeniden kuyrukta');
             return;
         }
 
@@ -347,12 +349,15 @@ app.listen(PORT, () => {
     console.log(`MetaSal Bot API çalışıyor: port ${PORT}`);
     console.log(`Panel URL: ${PANEL_URL}`);
     console.log(`Vision Local API: ${process.env.VISION_LOCAL_API || 'http://127.0.0.1:3030'}`);
-    console.log(`Thread Count: ${THREAD_COUNT}`);
-    console.log(`Thread Delay: ${THREAD_DELAY / 1000} saniye`);
 
-    // Proxy config'lerini yükle
+    // Proxy config'lerini yükle ve thread sayısını belirle
     const proxyCount = loadProxyConfig();
+    // Thread sayısı = carrier sayısı (minimum 1)
+    THREAD_COUNT = Math.max(1, proxyCount);
+
     console.log(`Proxy Config: ${proxyCount} carrier tanımlı`);
+    console.log(`Thread Count: ${THREAD_COUNT} (carrier sayısına göre)`);
+    console.log(`Thread Delay: ${THREAD_DELAY / 1000} saniye`);
     console.log('========================================\n');
 
     startAllThreads().catch(console.error);

@@ -47,7 +47,7 @@ router.post('/tasks/:id/result', async (req, res) => {
     const { id } = req.params;
     const { status, result } = req.body;
 
-    if (!status || !['completed', 'failed'].includes(status)) {
+    if (!status || !['completed', 'failed', 'pending'].includes(status)) {
         return res.status(400).json({ error: 'Geçersiz durum' });
     }
 
