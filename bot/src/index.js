@@ -160,10 +160,10 @@ async function processTask(task, threadId) {
             await stopProfile(folderId, visionId);
 
             // IP değiştir ve carrier kilidini aç
-            if (proxyHost) {
-                await changeIP(proxyHost);
-                unlockCarrier(proxyHost);
-            }
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
+            await changeIP(proxyHost);
+            unlockCarrier(proxyHost);
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
             return;
         }
 
@@ -200,10 +200,10 @@ async function processTask(task, threadId) {
                         await stopProfile(folderId, visionId);
 
                         // IP değiştir ve carrier kilidini aç
-                        if (proxyHost) {
-                            await changeIP(proxyHost);
-                            unlockCarrier(proxyHost);
-                        }
+                        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
+                        await changeIP(proxyHost);
+                        unlockCarrier(proxyHost);
+                        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
                         return;
                     }
 
@@ -263,10 +263,10 @@ async function processTask(task, threadId) {
             await stopProfile(folderId, visionId);
 
             // IP değiştir ve carrier kilidini aç
-            if (proxyHost) {
-                await changeIP(proxyHost);
-                unlockCarrier(proxyHost);
-            }
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
+            await changeIP(proxyHost);
+            unlockCarrier(proxyHost);
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
         } else {
             // Başarısız işlem sonrası kısa bekleme ve kapatma
             console.log(`[Thread-${threadId}] Görev başarısız oldu. 5 saniye içinde tarayıcı kapatılacak...`);
@@ -274,10 +274,10 @@ async function processTask(task, threadId) {
             await stopProfile(folderId, visionId);
 
             // IP değiştir ve carrier kilidini aç
-            if (proxyHost) {
-                await changeIP(proxyHost);
-                unlockCarrier(proxyHost);
-            }
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
+            await changeIP(proxyHost);
+            unlockCarrier(proxyHost);
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
         }
 
     } catch (error) {
