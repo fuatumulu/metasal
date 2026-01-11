@@ -107,6 +107,19 @@ app.post('/dashboard/clear-logs', requireSetup, requireAuth, async (req, res) =>
     }
 });
 
+// Dashboard: Bekleyen görevleri temizle
+app.post('/dashboard/clear-pending-tasks', requireSetup, requireAuth, async (req, res) => {
+    try {
+        await prisma.botTask.deleteMany({
+            where: { status: { in: ['pending', 'processing'] } }
+        });
+        res.redirect('/dashboard');
+    } catch (error) {
+        console.error('Clear pending tasks error:', error);
+        res.redirect('/dashboard');
+    }
+});
+
 // Home redirect
 app.get('/', async (req, res) => {
     const admin = await prisma.admin.findFirst();

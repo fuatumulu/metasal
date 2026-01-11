@@ -69,6 +69,13 @@
                     </span>
                     <span class="stat-label">Bekleyen Görev</span>
                 </div>
+                <% if (stats.pendingTasks> 0) { %>
+                    <form action="/dashboard/clear-pending-tasks" method="POST" style="margin-top: 0.5rem;"
+                        onsubmit="return confirm('Tüm bekleyen görevler silinecek, emin misiniz?')">
+                        <button type="submit" class="btn btn-danger btn-sm"
+                            style="font-size: 0.7rem; padding: 4px 8px;">🗑️ Temizle</button>
+                    </form>
+                    <% } %>
             </div>
 
             <div class="stat-card info">
