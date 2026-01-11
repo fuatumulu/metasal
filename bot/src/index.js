@@ -4,6 +4,7 @@ const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
+const { loadProxyConfig, isCarrierAvailable, lockCarrier, unlockCarrier, changeIP, getTotalCarrierCount } = require('./proxyManager');
 const axios = require('axios');
 
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
@@ -93,9 +94,22 @@ async function processTask(task, threadId) {
     const profile = task.profile;
     const visionId = profile.visionId;
     const folderId = profile.folderId;
+    const proxyHost = profile.proxyHost; // Profilin kullandığı proxy
     let browser = null;
 
     try {
+        // Carrier müsait mi kontrol et
+        if (proxyHost && !isCarrierAvailable(proxyHost)) {
+            console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul veya cooldown'da, görev atlanıyor...`);
+            // Görevi pending olarak bırak, başka thread denesin
+            return;
+        }
+
+        // Carrier'ı kilitle
+        if (proxyHost) {
+            lockCarrier(proxyHost, visionId);
+        }
+
         // Profil açmadan önce delay kontrolü
         await waitForProfileSlot(threadId);
 
@@ -147,6 +161,12 @@ async function processTask(task, threadId) {
             // Tarayıcıyı kapat ve sonlandır
             console.log(`[Thread-${threadId}] Oturum geçersiz olduğu için tarayıcı kapatılıyor...`);
             await stopProfile(folderId, visionId);
+
+            // IP değiştir ve carrier kilidini aç
+            if (proxyHost) {
+                await changeIP(proxyHost);
+                unlockCarrier(proxyHost);
+            }
             return;
         }
 
@@ -181,6 +201,12 @@ async function processTask(task, threadId) {
                         // Tarayıcıyı kapat
                         console.log(`[Thread-${threadId}] Tarayıcı kapatılıyor...`);
                         await stopProfile(folderId, visionId);
+
+                        // IP değiştir ve carrier kilidini aç
+                        if (proxyHost) {
+                            await changeIP(proxyHost);
+                            unlockCarrier(proxyHost);
+                        }
                         return;
                     }
 
@@ -238,11 +264,23 @@ async function processTask(task, threadId) {
             console.log(`[Thread-${threadId}] --- OTOMATİK TARAYICI KAPATMA ---`);
             console.log(`[Thread-${threadId}] İşlem tamamlandı. Tarayıcı kapatılıyor...`);
             await stopProfile(folderId, visionId);
+
+            // IP değiştir ve carrier kilidini aç
+            if (proxyHost) {
+                await changeIP(proxyHost);
+                unlockCarrier(proxyHost);
+            }
         } else {
             // Başarısız işlem sonrası kısa bekleme ve kapatma
             console.log(`[Thread-${threadId}] Görev başarısız oldu. 5 saniye içinde tarayıcı kapatılacak...`);
             await sleep(5000);
             await stopProfile(folderId, visionId);
+
+            // IP değiştir ve carrier kilidini aç
+            if (proxyHost) {
+                await changeIP(proxyHost);
+                unlockCarrier(proxyHost);
+            }
         }
 
     } catch (error) {
@@ -316,6 +354,10 @@ app.listen(PORT, () => {
     console.log(`Vision Local API: ${process.env.VISION_LOCAL_API || 'http://127.0.0.1:3030'}`);
     console.log(`Thread Count: ${THREAD_COUNT}`);
     console.log(`Thread Delay: ${THREAD_DELAY / 1000} saniye`);
+
+    // Proxy config'lerini yükle
+    const proxyCount = loadProxyConfig();
+    console.log(`Proxy Config: ${proxyCount} carrier tanımlı`);
     console.log('========================================\n');
 
     startAllThreads().catch(console.error);

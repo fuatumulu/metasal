@@ -21,6 +21,7 @@ model VisionProfile {
   folderId         String                            // Vision API'dan gelen Folder UUID
   name             String                            // Profil adı
   status           String                   @default("active") // active, disabled
+  proxyHost        String?                           // Proxy host:port (mobil IP değişimi için)
   lastSyncedAt     DateTime?
   lastRunAt        DateTime?                         // En son çalıştırılma zamanı
   createdAt        DateTime                 @default(now())

@@ -8,20 +8,64 @@ const VISION_CLOUD_API = 'https://v1.empr.cloud/api/v1';
 // Cloud API için Token
 const VISION_API_TOKEN = process.env.VISION_API_TOKEN;
 
+// Proxy cache (proxy_id -> proxy bilgisi)
+let proxyCache = new Map();
+
+/**
+ * Tüm proxy'leri listele ve cache'le
+ */
+async function loadProxies() {
+    try {
+        const headers = { 'X-Token': VISION_API_TOKEN };
+        const res = await axios.get(`${VISION_CLOUD_API}/proxies`, { headers });
+        const proxies = res.data.data || [];
+
+        proxyCache.clear();
+        for (const proxy of proxies) {
+            // Proxy host:port formatını oluştur
+            const hostPort = proxy.host && proxy.port ? `${proxy.host}:${proxy.port}` : null;
+            proxyCache.set(proxy.id, {
+                id: proxy.id,
+                name: proxy.name,
+                type: proxy.type,
+                host: proxy.host,
+                port: proxy.port,
+                hostPort: hostPort
+            });
+        }
+
+        console.log(`[Vision] ${proxyCache.size} proxy yüklendi`);
+        return proxyCache;
+    } catch (error) {
+        console.error('[Vision] Proxy listesi alma hatası:', error.message);
+        return proxyCache;
+    }
+}
+
+/**
+ * Proxy ID'ye göre host:port getir
+ */
+function getProxyHostPort(proxyId) {
+    const proxy = proxyCache.get(proxyId);
+    return proxy?.hostPort || null;
+}
+
 /**
  * Kloud API üzerinden tüm klasörleri ve içindeki profilleri listele
+ * Proxy bilgisi de dahil edilir
  */
 async function listProfiles() {
     try {
         if (!VISION_API_TOKEN) {
             console.error('VISION_API_TOKEN ayarlanmamış, cloud senkronizasyon yapılamaz.');
-            // Token yoksa yerel API'den (sadece çalışanları) dönmeyi deneyebiliriz veya hata verebiliriz.
-            // Ama dökümantasyona göre tam liste için klasörler üzerinden gitmek lazım.
             return [];
         }
 
         const headers = { 'X-Token': VISION_API_TOKEN };
         const filterFolderId = process.env.VISION_FOLDER_ID;
+
+        // Önce proxy'leri yükle
+        await loadProxies();
 
         // Eğer bir klasör ID'si verilmişse, doğrudan o klasörün profillerini çek
         if (filterFolderId && filterFolderId !== 'your_folder_id_here' && filterFolderId !== 'optional_folder_guid_here') {
@@ -34,7 +78,9 @@ async function listProfiles() {
                     visionId: p.id,
                     folderId: p.folder_id,
                     name: p.profile_name,
-                    status: p.running ? 'active' : 'disabled'
+                    status: p.running ? 'active' : 'disabled',
+                    proxyId: p.proxy_id || null,
+                    proxyHost: getProxyHostPort(p.proxy_id)
                 }));
             } catch (err) {
                 console.error(`"${filterFolderId}" klasörü profilleri alınamadı:`, err.message);
@@ -43,7 +89,6 @@ async function listProfiles() {
         }
 
         // Eğer klasör ID'si yoksa tüm klasörleri listele (Fallback)
-        // 1. Klasörleri al
         const foldersRes = await axios.get(`${VISION_CLOUD_API}/folders`, { headers });
         const folders = foldersRes.data.data || [];
 
@@ -53,7 +98,6 @@ async function listProfiles() {
 
         let allProfiles = [];
 
-        // 2. Her klasör için profilleri al
         for (const folder of folders) {
             try {
                 const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${folder.id}/profiles`, { headers });
@@ -63,7 +107,9 @@ async function listProfiles() {
                     visionId: p.id,
                     folderId: p.folder_id,
                     name: p.profile_name,
-                    status: p.running ? 'active' : 'disabled'
+                    status: p.running ? 'active' : 'disabled',
+                    proxyId: p.proxy_id || null,
+                    proxyHost: getProxyHostPort(p.proxy_id)
                 }));
 
                 allProfiles = allProfiles.concat(formatted);
@@ -165,5 +211,7 @@ async function stopProfile(folderId, profileId) {
 module.exports = {
     listProfiles,
     startProfile,
-    stopProfile
+    stopProfile,
+    getProxyHostPort,
+    loadProxies
 };

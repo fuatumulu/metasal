@@ -181,6 +181,7 @@ router.post('/profiles/push', async (req, res) => {
                     data: {
                         name: vp.name || vp.visionId,
                         folderId: vp.folderId,
+                        proxyHost: vp.proxyHost || null,
                         lastSyncedAt: new Date()
                     }
                 });
@@ -191,6 +192,7 @@ router.post('/profiles/push', async (req, res) => {
                         visionId: vp.visionId,
                         folderId: vp.folderId,
                         name: vp.name || vp.visionId,
+                        proxyHost: vp.proxyHost || null,
                         status: 'active', // Yeni profiller varsayılan olarak aktif
                         lastSyncedAt: new Date()
                     }
