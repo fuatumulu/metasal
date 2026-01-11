@@ -4,7 +4,7 @@ const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
-const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount } = require('./proxyManager');
+const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
 const axios = require('axios');
 
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
@@ -94,8 +94,8 @@ async function processTask(task, threadId) {
     const profile = task.profile;
     const visionId = profile.visionId;
     const folderId = profile.folderId;
-    // proxyHost yoksa DEFAULT carrier kullan (tüm profiller aynı carrier gibi davranır)
-    const proxyHost = profile.proxyHost || 'DEFAULT';
+    // proxyHost yoksa ENV'deki ilk carrier'ı kullan
+    const proxyHost = profile.proxyHost || getDefaultProxyHost() || 'DEFAULT';
     let browser = null;
 
     try {

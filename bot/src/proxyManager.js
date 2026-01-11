@@ -41,6 +41,19 @@ function loadProxyConfig() {
 }
 
 /**
+ * Varsayılan proxy host'u getir (tek carrier varsa onu kullan)
+ */
+function getDefaultProxyHost() {
+    if (proxyConfig.size === 0) {
+        return null;
+    }
+    // İlk config'i döndür
+    const firstKey = proxyConfig.keys().next().value;
+    console.log(`[ProxyManager] Varsayılan carrier: ${firstKey}`);
+    return firstKey;
+}
+
+/**
  * Proxy host için change URL getir
  */
 function getChangeUrl(proxyHost) {
@@ -217,6 +230,7 @@ function sleep(ms) {
 module.exports = {
     loadProxyConfig,
     getChangeUrl,
+    getDefaultProxyHost,
     isCarrierAvailable,
     tryLockCarrier,
     lockCarrier,
