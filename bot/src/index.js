@@ -4,7 +4,7 @@ const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
-const { loadProxyConfig, isCarrierAvailable, lockCarrier, unlockCarrier, changeIP, getTotalCarrierCount } = require('./proxyManager');
+const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount } = require('./proxyManager');
 const axios = require('axios');
 
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
@@ -98,16 +98,11 @@ async function processTask(task, threadId) {
     let browser = null;
 
     try {
-        // Carrier müsait mi kontrol et
-        if (proxyHost && !isCarrierAvailable(proxyHost)) {
+        // Carrier'ı atomik olarak kilitle (kontrol + kilitleme tek seferde)
+        if (!tryLockCarrier(proxyHost, visionId)) {
             console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul veya cooldown'da, görev atlanıyor...`);
             // Görevi pending olarak bırak, başka thread denesin
             return;
-        }
-
-        // Carrier'ı kilitle
-        if (proxyHost) {
-            lockCarrier(proxyHost, visionId);
         }
 
         // Profil açmadan önce delay kontrolü

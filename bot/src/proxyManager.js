@@ -84,7 +84,36 @@ function isCarrierAvailable(proxyHost) {
 }
 
 /**
- * Carrier'ı kilitle
+ * Carrier'ı kilitle - ATOMIK: kontrol ve kilitleme tek seferde
+ * Race condition'ı önler
+ * @returns {boolean} Başarılı ise true, carrier meşgulse false
+ */
+function tryLockCarrier(proxyHost, profileId) {
+    const state = getCarrierState(proxyHost);
+
+    // Zaten kilitli veya change pending ise başarısız
+    if (state.locked || state.changePending) {
+        console.log(`[ProxyManager] Carrier ${proxyHost} zaten kilitli (Aktif profil: ${state.activeProfileId})`);
+        return false;
+    }
+
+    // Cooldown kontrolü
+    const timeSinceLastChange = Date.now() - state.lastChangeTime;
+    if (state.lastChangeTime > 0 && timeSinceLastChange < CHANGE_COOLDOWN) {
+        const remaining = Math.ceil((CHANGE_COOLDOWN - timeSinceLastChange) / 1000);
+        console.log(`[ProxyManager] Carrier ${proxyHost} cooldown'da, ${remaining}sn kaldı`);
+        return false;
+    }
+
+    // Kilitle (atomik - await yok araya giremez)
+    state.locked = true;
+    state.activeProfileId = profileId;
+    console.log(`[ProxyManager] Carrier kilitlendi: ${proxyHost} (Profil: ${profileId})`);
+    return true;
+}
+
+/**
+ * Carrier'ı kilitle (eski API - geriye uyumluluk)
  */
 function lockCarrier(proxyHost, profileId) {
     const state = getCarrierState(proxyHost);
@@ -189,6 +218,7 @@ module.exports = {
     loadProxyConfig,
     getChangeUrl,
     isCarrierAvailable,
+    tryLockCarrier,
     lockCarrier,
     unlockCarrier,
     changeIP,
