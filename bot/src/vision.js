@@ -52,7 +52,7 @@ function getProxyHostPort(proxyId) {
 
 /**
  * Kloud API üzerinden tüm klasörleri ve içindeki profilleri listele
- * Proxy bilgisi de dahil edilir
+ * Proxy bilgisi profil verisinden doğrudan alınır
  */
 async function listProfiles() {
     try {
@@ -64,9 +64,6 @@ async function listProfiles() {
         const headers = { 'X-Token': VISION_API_TOKEN };
         const filterFolderId = process.env.VISION_FOLDER_ID;
 
-        // Önce proxy'leri yükle
-        await loadProxies();
-
         // Eğer bir klasör ID'si verilmişse, doğrudan o klasörün profillerini çek
         if (filterFolderId && filterFolderId !== 'your_folder_id_here' && filterFolderId !== 'optional_folder_guid_here') {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
@@ -74,14 +71,21 @@ async function listProfiles() {
                 const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, { headers });
                 const items = profilesRes.data.data?.items || [];
 
-                return items.map(p => ({
-                    visionId: p.id,
-                    folderId: p.folder_id,
-                    name: p.profile_name,
-                    status: p.running ? 'active' : 'disabled',
-                    proxyId: p.proxy_id || null,
-                    proxyHost: getProxyHostPort(p.proxy_id)
-                }));
+                return items.map(p => {
+                    // Proxy bilgisi doğrudan profil verisinde geliyor
+                    const proxyHost = p.proxy?.proxy_ip && p.proxy?.proxy_port
+                        ? `${p.proxy.proxy_ip}:${p.proxy.proxy_port}`
+                        : null;
+
+                    return {
+                        visionId: p.id,
+                        folderId: p.folder_id,
+                        name: p.profile_name,
+                        status: p.running ? 'active' : 'disabled',
+                        proxyId: p.proxy_id || null,
+                        proxyHost: proxyHost
+                    };
+                });
             } catch (err) {
                 console.error(`"${filterFolderId}" klasörü profilleri alınamadı:`, err.message);
                 return [];
