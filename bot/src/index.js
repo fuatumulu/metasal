@@ -125,13 +125,13 @@ async function processTask(task, threadId) {
 
         // Facebook'a git ve oturumun oturmasını bekle
         console.log(`[Thread-${threadId}] Facebook ana sayfası açılıyor...`);
-        await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
+        await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         // Facebook Stabilizasyonu: Saçma yenilemeleri engellemek için bekle ve reload et
         console.log(`[Thread-${threadId}] Facebook oturumu sabitleniyor (10 sn bekleme + reload)...`);
         await sleep(10000);
         try {
-            await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+            await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
         } catch (e) {
             console.log(`[Thread-${threadId}] Reload uyarısı (devam ediliyor):`, e.message);
         }
@@ -281,8 +281,23 @@ async function processTask(task, threadId) {
         }
 
     } catch (error) {
-        console.error(`[Thread-${threadId}] Görev işleme hatası:`, error);
+        console.error(`[Thread-${threadId}] Görev işleme hatası:`, error.message);
         await reportTaskResult(task.id, 'failed', error.message);
+
+        // Hata durumunda profili kapat, IP değiştir ve carrier kilidini aç
+        try {
+            if (browser) {
+                console.log(`[Thread-${threadId}] Hata sonrası profil kapatılıyor...`);
+                await stopProfile(folderId, visionId);
+            }
+        } catch (e) {
+            console.log(`[Thread-${threadId}] Profil kapatma uyarısı:`, e.message);
+        }
+
+        console.log(`[Thread-${threadId}] --- HATA SONRASI PROXY IP DEĞİŞTİRME ---`);
+        await changeIP(proxyHost);
+        unlockCarrier(proxyHost);
+        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
     } finally {
         // Bağlantıyı kopar (Vision profili stopProfile ile zaten kapandıysa hata vermez)
         if (browser) {
