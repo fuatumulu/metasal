@@ -61,9 +61,18 @@ router.post('/tasks/:id/result', async (req, res) => {
             return res.status(404).json({ error: 'Görev bulunamadı' });
         }
 
+        // KRITIK: Status 'pending' olduğunda result alanını güncelleme!
+        // result alanında action tipi (like/comment/share) saklanıyor.
+        // Eğer carrier meşgulse görev pending yapılır ama action tipi korunmalı.
+        const updateData = { status };
+        if (status !== 'pending') {
+            // Sadece completed/failed durumlarında result güncellenir
+            updateData.result = result || null;
+        }
+
         const task = await prisma.botTask.update({
             where: { id: parseInt(id) },
-            data: { status, result: result || null },
+            data: updateData,
             include: { profile: true, target: true, postTask: true }
         });
 
