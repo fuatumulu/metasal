@@ -7,6 +7,13 @@ const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPos
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
 const axios = require('axios');
 
+// Timestamp helper - tüm loglar zaman etiketli olacak
+const originalLog = console.log;
+const originalError = console.error;
+const getTimestamp = () => new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+console.log = (...args) => originalLog(`[${getTimestamp()}]`, ...args);
+console.error = (...args) => originalError(`[${getTimestamp()}]`, ...args);
+
 const TASK_CHECK_INTERVAL = parseInt(process.env.TASK_CHECK_INTERVAL) || 10000;
 const PORT = process.env.BOT_PORT || 3001;
 const PANEL_URL = process.env.PANEL_URL || 'http://localhost:3000';
