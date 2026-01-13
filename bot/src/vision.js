@@ -69,28 +69,37 @@ async function listProfiles() {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
             try {
                 let allItems = [];
-                let page = 1;
-                const perPage = 50; // Maksimum items per page
+                let offset = 0;
+                const limit = 200; // Tek seferde tüm profilleri almaya çalış
                 let hasMore = true;
 
                 while (hasMore) {
+                    // Farklı API pagination parametrelerini dene
                     const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, {
                         headers,
-                        params: { page, per_page: perPage }
+                        params: {
+                            limit: limit,
+                            offset: offset,
+                            per_page: limit,
+                            page: offset === 0 ? 1 : Math.floor(offset / 25) + 1
+                        }
                     });
 
                     const items = profilesRes.data.data?.items || [];
                     const total = profilesRes.data.data?.total || 0;
 
-                    allItems = allItems.concat(items);
+                    // Yeni unique profilleri ekle (duplicate önleme)
+                    const existingIds = new Set(allItems.map(p => p.id));
+                    const newItems = items.filter(item => !existingIds.has(item.id));
+                    allItems = allItems.concat(newItems);
 
-                    console.log(`Sayfa ${page}: ${items.length} profil alındı (Toplam: ${allItems.length}/${total})`);
+                    console.log(`Offset ${offset}: ${items.length} profil alındı, ${newItems.length} yeni (Toplam unique: ${allItems.length}/${total})`);
 
                     // Daha fazla sayfa var mı kontrol et
-                    if (allItems.length >= total || items.length === 0) {
+                    if (allItems.length >= total || newItems.length === 0 || items.length === 0) {
                         hasMore = false;
                     } else {
-                        page++;
+                        offset += items.length;
                     }
                 }
 
