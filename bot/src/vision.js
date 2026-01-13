@@ -69,26 +69,25 @@ async function listProfiles() {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
             try {
                 let allItems = [];
-                let pn = 1;
+                let pn = 0; // 0'dan başlayarak test et
                 const ps = 100;
                 let hasMore = true;
 
                 while (hasMore) {
-                    // Önce parametresiz dene, API default değerleri kullanacak
-                    // Sonra pn ve ps ekleyerek dene
-                    const params = pn === 1 ? {} : { pn, ps };
+                    // Her sayfada pn ve ps gönder
+                    const params = { pn, ps };
 
-                    console.log(`[DEBUG] API çağrısı: pn=${pn}, params=`, JSON.stringify(params));
+                    console.log(`[DEBUG] API çağrısı: pn=${pn}, ps=${ps}`);
 
                     const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, {
                         headers,
                         params
                     });
 
-                    console.log(`[DEBUG] API Response keys:`, Object.keys(profilesRes.data.data || {}));
-
                     const items = profilesRes.data.data?.items || [];
                     const total = profilesRes.data.data?.total || 0;
+
+                    console.log(`[DEBUG] Sayfa pn=${pn}: ${items.length} profil geldi, total=${total}`);
 
                     // Yeni unique profilleri ekle (duplicate önleme)
                     const existingIds = new Set(allItems.map(p => p.id));
