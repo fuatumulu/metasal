@@ -108,7 +108,10 @@ async function listProfiles() {
                         proxyId: p.proxy_id || null,
                         proxyHost: proxyHost
                     };
-                });
+                }).filter((profile, index, self) =>
+                    // Duplicate visionId'leri temizle (API pagination sorunu için)
+                    index === self.findIndex(p => p.visionId === profile.visionId)
+                );
             } catch (err) {
                 console.error(`"${filterFolderId}" klasörü profilleri alınamadı:`, err.message);
                 return [];
@@ -163,7 +166,10 @@ async function listProfiles() {
             }
         }
 
-        return allProfiles;
+        // Duplicate visionId'leri temizle (API pagination sorunu için)
+        return allProfiles.filter((profile, index, self) =>
+            index === self.findIndex(p => p.visionId === profile.visionId)
+        );
     } catch (error) {
         console.error('Profil listesi alma hatası:', error.message);
         return [];
