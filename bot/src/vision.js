@@ -69,20 +69,15 @@ async function listProfiles() {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
             try {
                 let allItems = [];
-                let offset = 0;
-                const limit = 200; // Tek seferde tüm profilleri almaya çalış
+                let pn = 1; // Page number (dökümantasyona göre)
+                const ps = 100; // Page size (dökümantasyona göre)
                 let hasMore = true;
 
                 while (hasMore) {
-                    // Farklı API pagination parametrelerini dene
+                    // Vision API dökümantasyonuna göre: pn = page number, ps = page size
                     const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, {
                         headers,
-                        params: {
-                            limit: limit,
-                            offset: offset,
-                            per_page: limit,
-                            page: offset === 0 ? 1 : Math.floor(offset / 25) + 1
-                        }
+                        params: { pn, ps }
                     });
 
                     const items = profilesRes.data.data?.items || [];
@@ -93,13 +88,13 @@ async function listProfiles() {
                     const newItems = items.filter(item => !existingIds.has(item.id));
                     allItems = allItems.concat(newItems);
 
-                    console.log(`Offset ${offset}: ${items.length} profil alındı, ${newItems.length} yeni (Toplam unique: ${allItems.length}/${total})`);
+                    console.log(`Sayfa ${pn}: ${items.length} profil alındı, ${newItems.length} yeni (Toplam unique: ${allItems.length}/${total})`);
 
                     // Daha fazla sayfa var mı kontrol et
-                    if (allItems.length >= total || newItems.length === 0 || items.length === 0) {
+                    if (allItems.length >= total || items.length === 0) {
                         hasMore = false;
                     } else {
-                        offset += items.length;
+                        pn++;
                     }
                 }
 
@@ -139,14 +134,14 @@ async function listProfiles() {
 
         for (const folder of folders) {
             try {
-                let page = 1;
-                const perPage = 50;
+                let pn = 1; // Page number
+                const ps = 100; // Page size
                 let hasMore = true;
 
                 while (hasMore) {
                     const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${folder.id}/profiles`, {
                         headers,
-                        params: { page, per_page: perPage }
+                        params: { pn, ps }
                     });
 
                     const items = profilesRes.data.data?.items || [];
@@ -167,7 +162,7 @@ async function listProfiles() {
                     if (allProfiles.length >= total || items.length === 0) {
                         hasMore = false;
                     } else {
-                        page++;
+                        pn++;
                     }
                 }
             } catch (err) {
