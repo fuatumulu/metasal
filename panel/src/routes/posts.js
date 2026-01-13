@@ -4,6 +4,9 @@ const { PrismaClient } = require('@prisma/client');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Post görevleri için retry katsayısı (ENV'den veya varsayılan 2)
+const POST_RETRY_MULTIPLIER = parseInt(process.env.POST_RETRY_MULTIPLIER) || 2;
+
 // Gönderi listesi
 router.get('/', async (req, res) => {
     try {
@@ -74,13 +77,19 @@ router.post('/add', async (req, res) => {
             });
         }
 
+        // Maksimum profil sayısını hesapla (katsayı ile)
+        const totalActions = likes + comments + shares;
+        const maxProfiles = totalActions * POST_RETRY_MULTIPLIER;
+
         // Ana görevi oluştur
         const post = await prisma.postTask.create({
             data: {
                 searchKeyword: searchKeyword.trim(),
                 targetLikes: likes,
                 targetComments: comments,
-                targetShares: shares
+                targetShares: shares,
+                maxProfiles: maxProfiles,
+                usedProfiles: totalActions // İlk dağıtımda kullanılan profil sayısı
             }
         });
 
@@ -152,6 +161,10 @@ router.post('/requeue/:id', async (req, res) => {
             where: { postTaskId: parseInt(id) }
         });
 
+        // Maksimum profil sayısını hesapla (katsayı ile)
+        const totalActions = post.targetLikes + post.targetComments + post.targetShares;
+        const maxProfiles = totalActions * POST_RETRY_MULTIPLIER;
+
         // Sayaçları sıfırla
         await prisma.postTask.update({
             where: { id: parseInt(id) },
@@ -159,6 +172,8 @@ router.post('/requeue/:id', async (req, res) => {
                 doneLikes: 0,
                 doneComments: 0,
                 doneShares: 0,
+                maxProfiles: maxProfiles,
+                usedProfiles: totalActions, // İlk dağıtımda kullanılan profil sayısı
                 status: 'pending'
             }
         });

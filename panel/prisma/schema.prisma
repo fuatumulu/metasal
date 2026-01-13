@@ -63,6 +63,8 @@ model PostTask {
   doneLikes        Int                      @default(0)
   doneComments     Int                      @default(0)
   doneShares       Int                      @default(0)
+  maxProfiles      Int                      @default(0)   // Maksimum kullanılabilir profil sayısı (katsayı ile hesaplanır)
+  usedProfiles     Int                      @default(0)   // Şu ana kadar kullanılan profil sayısı
   status           String                   @default("pending") // pending, in_progress, completed, failed
   createdAt        DateTime                 @default(now())
   tasks            BotTask[]

@@ -143,14 +143,119 @@ router.post('/tasks/:id/result', async (req, res) => {
 
             if (pendingCount === 0) {
                 const postTask = await prisma.postTask.findUnique({ where: { id: task.postTaskId } });
-                const allDone = postTask.doneLikes >= postTask.targetLikes &&
-                    postTask.doneComments >= postTask.targetComments &&
-                    postTask.doneShares >= postTask.targetShares;
 
-                await prisma.postTask.update({
-                    where: { id: task.postTaskId },
-                    data: { status: allDone ? 'completed' : 'failed' }
-                });
+                // Eksik aksiyonları hesapla
+                const missingLikes = Math.max(0, postTask.targetLikes - postTask.doneLikes);
+                const missingComments = Math.max(0, postTask.targetComments - postTask.doneComments);
+                const missingShares = Math.max(0, postTask.targetShares - postTask.doneShares);
+                const totalMissing = missingLikes + missingComments + missingShares;
+
+                const allDone = totalMissing === 0;
+
+                if (allDone) {
+                    // Tüm görevler tamamlandı
+                    await prisma.postTask.update({
+                        where: { id: task.postTaskId },
+                        data: { status: 'completed' }
+                    });
+                } else if (postTask.usedProfiles < postTask.maxProfiles) {
+                    // Hala limit dolmadı, yeni profiller ekle
+                    console.log(`[Retry] PostTask #${postTask.id}: ${totalMissing} eksik aksiyon, ${postTask.usedProfiles}/${postTask.maxProfiles} profil kullanıldı. Yeni profiller ekleniyor...`);
+
+                    // Bu PostTask için daha önce görev atanmamış profilleri bul
+                    const usedProfileIds = await prisma.botTask.findMany({
+                        where: { postTaskId: postTask.id },
+                        select: { profileId: true }
+                    });
+                    const usedIds = usedProfileIds.map(p => p.profileId).filter(id => id !== null);
+
+                    // En az bir hedef beğenmiş, henüz kullanılmamış aktif profilleri bul
+                    const availableProfiles = await prisma.visionProfile.findMany({
+                        where: {
+                            status: 'active',
+                            likedTargets: { some: {} },
+                            id: { notIn: usedIds }
+                        },
+                        orderBy: [{ lastRunAt: 'asc' }]
+                    });
+
+                    if (availableProfiles.length > 0) {
+                        // Eksik aksiyonlar için yeni görevler oluştur
+                        let newTasksCreated = 0;
+                        let profileIndex = 0;
+                        const remainingSlots = postTask.maxProfiles - postTask.usedProfiles;
+
+                        // Beğeniler
+                        for (let i = 0; i < missingLikes && profileIndex < availableProfiles.length && newTasksCreated < remainingSlots; i++) {
+                            await prisma.botTask.create({
+                                data: {
+                                    profileId: availableProfiles[profileIndex].id,
+                                    taskType: 'post_action',
+                                    postTaskId: postTask.id,
+                                    status: 'pending',
+                                    result: 'like'
+                                }
+                            });
+                            profileIndex++;
+                            newTasksCreated++;
+                        }
+
+                        // Yorumlar
+                        for (let i = 0; i < missingComments && profileIndex < availableProfiles.length && newTasksCreated < remainingSlots; i++) {
+                            await prisma.botTask.create({
+                                data: {
+                                    profileId: availableProfiles[profileIndex].id,
+                                    taskType: 'post_action',
+                                    postTaskId: postTask.id,
+                                    status: 'pending',
+                                    result: 'comment'
+                                }
+                            });
+                            profileIndex++;
+                            newTasksCreated++;
+                        }
+
+                        // Paylaşımlar
+                        for (let i = 0; i < missingShares && profileIndex < availableProfiles.length && newTasksCreated < remainingSlots; i++) {
+                            await prisma.botTask.create({
+                                data: {
+                                    profileId: availableProfiles[profileIndex].id,
+                                    taskType: 'post_action',
+                                    postTaskId: postTask.id,
+                                    status: 'pending',
+                                    result: 'share'
+                                }
+                            });
+                            profileIndex++;
+                            newTasksCreated++;
+                        }
+
+                        // usedProfiles güncelle
+                        await prisma.postTask.update({
+                            where: { id: postTask.id },
+                            data: {
+                                usedProfiles: postTask.usedProfiles + newTasksCreated,
+                                status: 'in_progress'
+                            }
+                        });
+
+                        console.log(`[Retry] PostTask #${postTask.id}: ${newTasksCreated} yeni görev eklendi.`);
+                    } else {
+                        // Kullanılabilir profil kalmadı
+                        console.log(`[Retry] PostTask #${postTask.id}: Kullanılabilir profil kalmadı. Görev başarısız.`);
+                        await prisma.postTask.update({
+                            where: { id: postTask.id },
+                            data: { status: 'failed' }
+                        });
+                    }
+                } else {
+                    // Limit doldu, görev başarısız
+                    console.log(`[Retry] PostTask #${postTask.id}: Maksimum profil limiti (${postTask.maxProfiles}) aşıldı. Görev başarısız.`);
+                    await prisma.postTask.update({
+                        where: { id: task.postTaskId },
+                        data: { status: 'failed' }
+                    });
+                }
             } else {
                 await prisma.postTask.update({
                     where: { id: task.postTaskId },
