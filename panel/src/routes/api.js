@@ -285,5 +285,18 @@ router.get('/comments/random', async (req, res) => {
     }
 });
 
+// Heartbeat endpoint - Bot'un bağlantısını canlı tut
+router.get('/heartbeat', async (req, res) => {
+    try {
+        res.json({
+            success: true,
+            message: 'Panel aktif',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Heartbeat hatası' });
+    }
+});
+
 module.exports = router;
 

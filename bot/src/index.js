@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const { getPendingTask, reportTaskResult, pushProfiles, sendLog } = require('./api');
+const { getPendingTask, reportTaskResult, pushProfiles, sendLog, heartbeat } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
 const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
@@ -400,6 +400,23 @@ app.listen(PORT, () => {
     console.log(`Thread Count: ${THREAD_COUNT} (carrier sayısına göre)`);
     console.log(`Thread Delay: ${THREAD_DELAY / 1000} saniye`);
     console.log('========================================\n');
+
+    // Heartbeat interval - Her 10 dakikada bir panel ile haberleşme
+    // Bot'un uzun süre görevsiz kaldığında uykuya dalmasını engeller
+    const HEARTBEAT_INTERVAL = 10 * 60 * 1000; // 10 dakika
+    setInterval(async () => {
+        const result = await heartbeat();
+        if (result) {
+            console.log(`[Heartbeat] Panel bağlantısı aktif - ${new Date().toLocaleTimeString('tr-TR')}`);
+        }
+    }, HEARTBEAT_INTERVAL);
+
+    // İlk heartbeat'i hemen gönder
+    heartbeat().then(result => {
+        if (result) {
+            console.log('[Heartbeat] İlk bağlantı kuruldu');
+        }
+    });
 
     startAllThreads().catch(console.error);
 });

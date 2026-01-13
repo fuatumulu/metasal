@@ -68,10 +68,33 @@ async function listProfiles() {
         if (filterFolderId && filterFolderId !== 'your_folder_id_here' && filterFolderId !== 'optional_folder_guid_here') {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
             try {
-                const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, { headers });
-                const items = profilesRes.data.data?.items || [];
+                let allItems = [];
+                let page = 1;
+                const perPage = 50; // Maksimum items per page
+                let hasMore = true;
 
-                return items.map(p => {
+                while (hasMore) {
+                    const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, {
+                        headers,
+                        params: { page, per_page: perPage }
+                    });
+
+                    const items = profilesRes.data.data?.items || [];
+                    const total = profilesRes.data.data?.total || 0;
+
+                    allItems = allItems.concat(items);
+
+                    console.log(`Sayfa ${page}: ${items.length} profil alındı (Toplam: ${allItems.length}/${total})`);
+
+                    // Daha fazla sayfa var mı kontrol et
+                    if (allItems.length >= total || items.length === 0) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                    }
+                }
+
+                return allItems.map(p => {
                     // Proxy bilgisi doğrudan profil verisinde geliyor
                     const proxyHost = p.proxy?.proxy_ip && p.proxy?.proxy_port
                         ? `${p.proxy.proxy_ip}:${p.proxy.proxy_port}`
@@ -104,19 +127,37 @@ async function listProfiles() {
 
         for (const folder of folders) {
             try {
-                const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${folder.id}/profiles`, { headers });
-                const items = profilesRes.data.data?.items || [];
+                let page = 1;
+                const perPage = 50;
+                let hasMore = true;
 
-                const formatted = items.map(p => ({
-                    visionId: p.id,
-                    folderId: p.folder_id,
-                    name: p.profile_name,
-                    status: p.running ? 'active' : 'disabled',
-                    proxyId: p.proxy_id || null,
-                    proxyHost: getProxyHostPort(p.proxy_id)
-                }));
+                while (hasMore) {
+                    const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${folder.id}/profiles`, {
+                        headers,
+                        params: { page, per_page: perPage }
+                    });
 
-                allProfiles = allProfiles.concat(formatted);
+                    const items = profilesRes.data.data?.items || [];
+                    const total = profilesRes.data.data?.total || 0;
+
+                    const formatted = items.map(p => ({
+                        visionId: p.id,
+                        folderId: p.folder_id,
+                        name: p.profile_name,
+                        status: p.running ? 'active' : 'disabled',
+                        proxyId: p.proxy_id || null,
+                        proxyHost: getProxyHostPort(p.proxy_id)
+                    }));
+
+                    allProfiles = allProfiles.concat(formatted);
+
+                    // Daha fazla sayfa var mı kontrol et
+                    if (allProfiles.length >= total || items.length === 0) {
+                        hasMore = false;
+                    } else {
+                        page++;
+                    }
+                }
             } catch (err) {
                 console.error(`Klasör ${folder.id} profilleri alınamadı:`, err.message);
             }

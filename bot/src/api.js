@@ -55,11 +55,25 @@ async function sendLog(level, type, message, details = null) {
         // Silent error for logging
     }
 }
+/**
+ * Heartbeat - Panel ile bağlantıyı canlı tut
+ * Uzun süre görevsiz kalan bot'un uykuya dalmasını engeller
+ */
+async function heartbeat() {
+    try {
+        const response = await axios.get(`${PANEL_URL}/api/heartbeat`);
+        return response.data;
+    } catch (error) {
+        console.error('[Heartbeat] Panel bağlantı hatası:', error.message);
+        return null;
+    }
+}
 
 module.exports = {
     getPendingTask,
     reportTaskResult,
     pushProfiles,
-    sendLog
+    sendLog,
+    heartbeat
 };
 
