@@ -69,32 +69,25 @@ async function listProfiles() {
             console.log(`Doğrudan "${filterFolderId}" klasöründeki profiller çekiliyor...`);
             try {
                 let allItems = [];
-                let pn = 0; // 0'dan başlayarak test et
-                const ps = 100;
+                let pn = 0; // Vision API pn=0'dan başlar
+                const ps = 100; // Sayfa başına profil sayısı
                 let hasMore = true;
 
                 while (hasMore) {
-                    // Her sayfada pn ve ps gönder
-                    const params = { pn, ps };
-
-                    console.log(`[DEBUG] API çağrısı: pn=${pn}, ps=${ps}`);
-
                     const profilesRes = await axios.get(`${VISION_CLOUD_API}/folders/${filterFolderId}/profiles`, {
                         headers,
-                        params
+                        params: { pn, ps }
                     });
 
                     const items = profilesRes.data.data?.items || [];
                     const total = profilesRes.data.data?.total || 0;
 
-                    console.log(`[DEBUG] Sayfa pn=${pn}: ${items.length} profil geldi, total=${total}`);
-
-                    // Yeni unique profilleri ekle (duplicate önleme)
+                    // Yeni unique profilleri ekle
                     const existingIds = new Set(allItems.map(p => p.id));
                     const newItems = items.filter(item => !existingIds.has(item.id));
                     allItems = allItems.concat(newItems);
 
-                    console.log(`Sayfa ${pn}: ${items.length} profil alındı, ${newItems.length} yeni (Toplam unique: ${allItems.length}/${total})`);
+                    console.log(`Sayfa ${pn}: ${items.length} profil alındı (Toplam: ${allItems.length}/${total})`);
 
                     // Daha fazla sayfa var mı kontrol et
                     if (allItems.length >= total || items.length === 0) {
@@ -140,8 +133,8 @@ async function listProfiles() {
 
         for (const folder of folders) {
             try {
-                let pn = 1; // Page number
-                const ps = 100; // Page size
+                let pn = 0; // Vision API pn=0'dan başlar
+                const ps = 100;
                 let hasMore = true;
 
                 while (hasMore) {
