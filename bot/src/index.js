@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog, heartbeat } = require('./api');
-const { listProfiles, startProfile, stopProfile } = require('./vision');
+const { listProfiles, startProfile, stopProfile, updateProfileStatus } = require('./vision');
 const { sleep, likeTarget, boostTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing, ensureMaximized } = require('./facebook');
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
 const axios = require('axios');
@@ -183,6 +183,10 @@ async function processTask(task, threadId) {
             await sendLog('error', 'SESSION_ERROR', `[Thread-${threadId}] Oturum doğrulaması başarısız: Profile: ${profile.name}`, { visionId, threadId });
             console.error(`[Thread-${threadId}] HATA: Oturum doğrulaması başarısız! (Bildirimler/Messenger butonu bulunamadı)`);
             await reportTaskResult(task.id, 'failed', 'Oturum doğrulaması başarısız: Facebook girişi aktif değil');
+
+            // Vision'da profil status'unu ERROR olarak güncelle
+            console.log(`[Thread-${threadId}] Vision'da profil status'u ERROR olarak güncelleniyor...`);
+            await updateProfileStatus(folderId, visionId, 'ERROR');
 
             // Tarayıcıyı kapat ve sonlandır
             console.log(`[Thread-${threadId}] Oturum geçersiz olduğu için tarayıcı kapatılıyor...`);

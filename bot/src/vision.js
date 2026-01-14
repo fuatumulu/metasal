@@ -262,10 +262,88 @@ async function stopProfile(folderId, profileId) {
     }
 }
 
+// Status cache (folder_id -> status listesi)
+let statusCache = new Map();
+
+/**
+ * Folder'daki status listesini getir (cache'li)
+ */
+async function getStatusList(folderId) {
+    // Cache'de varsa döndür
+    if (statusCache.has(folderId)) {
+        return statusCache.get(folderId);
+    }
+
+    try {
+        const headers = { 'X-Token': VISION_API_TOKEN };
+        const res = await axios.get(`${VISION_CLOUD_API}/folders/${folderId}/statuses`, { headers });
+        const statuses = res.data.data || [];
+
+        // Cache'e kaydet
+        statusCache.set(folderId, statuses);
+        console.log(`[Vision] ${folderId} klasörü için ${statuses.length} status yüklendi`);
+
+        return statuses;
+    } catch (error) {
+        console.error('[Vision] Status listesi alma hatası:', error.message);
+        return [];
+    }
+}
+
+/**
+ * Status isminden UUID bul
+ */
+async function getStatusIdByName(folderId, statusName) {
+    const statuses = await getStatusList(folderId);
+    const status = statuses.find(s => s.status.toUpperCase() === statusName.toUpperCase());
+    return status?.id || null;
+}
+
+/**
+ * Profil status'unu güncelle
+ * @param {string} folderId - Folder UUID
+ * @param {string} profileId - Profile UUID
+ * @param {string} statusName - Status ismi (örn: "ERROR", "GOOD", "CHECK")
+ */
+async function updateProfileStatus(folderId, profileId, statusName) {
+    try {
+        // Status isminden UUID bul
+        const statusId = await getStatusIdByName(folderId, statusName);
+
+        if (!statusId) {
+            console.error(`[Vision] "${statusName}" isimli status bulunamadı! Lütfen Vision'da bu status'u oluşturun.`);
+            return false;
+        }
+
+        const headers = {
+            'X-Token': VISION_API_TOKEN,
+            'Content-Type': 'application/json'
+        };
+
+        const body = {
+            profile_status: statusId
+        };
+
+        await axios.patch(
+            `${VISION_CLOUD_API}/folders/${folderId}/profiles/${profileId}`,
+            body,
+            { headers }
+        );
+
+        console.log(`[Vision] Profil ${profileId} status'u "${statusName}" olarak güncellendi`);
+        return true;
+    } catch (error) {
+        console.error('[Vision] Profil status güncelleme hatası:', error.message);
+        return false;
+    }
+}
+
 module.exports = {
     listProfiles,
     startProfile,
     stopProfile,
     getProxyHostPort,
-    loadProxies
+    loadProxies,
+    updateProfileStatus,
+    getStatusList
 };
