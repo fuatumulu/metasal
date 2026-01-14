@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog, heartbeat } = require('./api');
 const { listProfiles, startProfile, stopProfile } = require('./vision');
-const { sleep, likeTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing } = require('./facebook');
+const { sleep, likeTarget, boostTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing, ensureMaximized } = require('./facebook');
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
 const axios = require('axios');
 
@@ -149,6 +149,9 @@ async function processTask(task, threadId) {
         const pages = await browser.pages();
         const page = pages[0] || await browser.newPage();
 
+        // Pencereyi gerekirse büyüt
+        await ensureMaximized(page);
+
         // Facebook'a git ve oturumun oturmasını bekle
         console.log(`[Thread-${threadId}] Facebook ana sayfası açılıyor...`);
         await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -272,6 +275,16 @@ async function processTask(task, threadId) {
                             success = await shareCurrentPost(page);
                             break;
                     }
+                }
+                break;
+
+            case 'boost_target':
+                if (task.target) {
+                    // Boost: Hedef sayfa/grubun gönderilerini beğen
+                    // postCount, task.result alanında saklanıyor
+                    const postCount = parseInt(task.result) || 4;
+                    console.log(`[Thread-${threadId}] --- BOOST TARGET: ${task.target.url} (${postCount} gönderi) ---`);
+                    success = await boostTarget(page, task.target.url, postCount);
                 }
                 break;
         }

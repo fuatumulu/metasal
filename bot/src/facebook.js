@@ -718,6 +718,34 @@ async function shareCurrentPost(page) {
     }
 }
 
+/**
+ * Tarayıcı penceresinin durumunu kontrol eder ve küçükse tam ekran yapar
+ */
+async function ensureMaximized(page) {
+    try {
+        const session = await page.target().createCDPSession();
+        const { windowId, bounds } = await session.send('Browser.getWindowForTarget');
+
+        if (bounds.windowState !== 'maximized') {
+            console.log(`[Browser] Mevcut pencere durumu: ${bounds.windowState}. Tam ekran yapılıyor...`);
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { windowState: 'maximized' }
+            });
+            await sleep(1000); // Değişikliğin işlemesi için kısa bir bekleme
+        } else {
+            console.log('[Browser] Pencere zaten tam ekran.');
+        }
+    } catch (error) {
+        console.log('[Browser] CDP ile pencere büyütülemedi, viewport ayarlanıyor:', error.message);
+        try {
+            await page.setViewport({ width: 1920, height: 1080 });
+        } catch (e) {
+            console.error('[Browser] Viewport ayarlama hatası:', e.message);
+        }
+    }
+}
+
 // Eski fonksiyonlar (geriye uyumluluk için)
 async function likePost(page, postUrl) {
     await page.goto(postUrl, { waitUntil: 'networkidle2' });
@@ -787,10 +815,123 @@ async function simulateHumanBrowsing(page) {
     }
 }
 
+/**
+ * Hedef sayfa/grubun gönderilerini beğen (Boost)
+ * Bu işlem, hedefin gönderilerinin bot profilinin feed'inde görünmesini sağlar
+ * @param {object} page - Puppeteer page
+ * @param {string} targetUrl - Hedef sayfa/grup URL'si
+ * @param {number} postCount - Beğenilecek gönderi sayısı (varsayılan: 4)
+ * @returns {boolean} - Başarılı mı
+ */
+async function boostTarget(page, targetUrl, postCount = 4) {
+    try {
+        console.log(`\n========================================`);
+        console.log(`BOOST İŞLEMİ BAŞLATILIYOR`);
+        console.log(`Hedef: ${targetUrl}`);
+        console.log(`Beğenilecek gönderi: ${postCount}`);
+        console.log(`========================================`);
+        await sendLog('info', 'BOOST_START', `Boost işlemi başlatılıyor: ${targetUrl}`, { url: targetUrl, postCount });
+
+        // Hedef sayfaya git
+        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await sleep(3000);
+
+        // Mouse'u ortaya getir
+        await moveToCenterOfScreen(page);
+
+        let likedCount = 0;
+        let scrollCount = 0;
+        const maxScrolls = 25; // Maksimum scroll sayısı
+        const likedElements = new Set(); // Zaten beğenilen elementleri takip et
+
+        while (likedCount < postCount && scrollCount < maxScrolls) {
+            // Görünür alandaki Like butonlarını bul ve tıkla (likeCurrentPost mantığı ile aynı)
+            const likeResult = await page.evaluate((alreadyLiked) => {
+                const likeTexts = ['like', 'beğen'];
+                const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+
+                for (const el of allElements) {
+                    const text = el.textContent.trim().toLowerCase();
+                    const rect = el.getBoundingClientRect();
+
+                    // Görünür alanda mı? (ekranın üst 1/3 - alt 2/3 arasında)
+                    if (rect.top < 100 || rect.top > window.innerHeight - 100) continue;
+
+                    // Like butonu mu? (tam eşleşme)
+                    if (likeTexts.some(t => text === t)) {
+                        // Bu elementin benzersiz konumu
+                        const elementKey = `${Math.round(rect.top)}-${Math.round(rect.left)}`;
+
+                        // Daha önce beğenilmedi mi?
+                        if (!alreadyLiked.includes(elementKey)) {
+                            // Tıklanabilir elementi bul
+                            const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                            clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            clickable.click();
+                            return { success: true, elementKey };
+                        }
+                    }
+                }
+                return { success: false };
+            }, Array.from(likedElements));
+
+            if (likeResult.success) {
+                likedCount++;
+                likedElements.add(likeResult.elementKey);
+                console.log(`[BOOST] ${likedCount}/${postCount} gönderi beğenildi`);
+                await sendLog('info', 'BOOST_LIKE', `Boost: ${likedCount}/${postCount} gönderi beğenildi`);
+
+                // Beğeni sonrası human-like bekleme (2-4 saniye)
+                const waitTime = 2000 + Math.random() * 2000;
+                await sleep(waitTime);
+            }
+
+            // Aşağı doğru human-like scroll yap
+            const scrollAmount = Math.floor(Math.random() * 300) + 250; // 250-550px
+            await page.evaluate((amount) => {
+                window.scrollBy({ top: amount, behavior: 'smooth' });
+            }, scrollAmount);
+
+            scrollCount++;
+
+            // Scroll sonrası bekleme (1-2 saniye)
+            await sleep(1000 + Math.random() * 1000);
+
+            // %10 ihtimalle küçük bir yukarı scroll (doğal davranış)
+            if (Math.random() < 0.1) {
+                const upScroll = Math.floor(Math.random() * 100) + 50;
+                await page.evaluate((amount) => {
+                    window.scrollBy({ top: -amount, behavior: 'smooth' });
+                }, upScroll);
+                await sleep(500);
+            }
+        }
+
+        if (likedCount >= postCount) {
+            console.log(`\n[BOOST] TAMAMLANDI: ${likedCount} gönderi beğenildi`);
+            await sendLog('success', 'BOOST_SUCCESS', `Boost tamamlandı: ${likedCount} gönderi beğenildi`, { likedCount });
+            return true;
+        } else if (likedCount > 0) {
+            console.log(`\n[BOOST] KISMİ BAŞARI: ${likedCount}/${postCount} gönderi beğenildi`);
+            await sendLog('warning', 'BOOST_PARTIAL', `Boost kısmi: ${likedCount}/${postCount} gönderi beğenildi`, { likedCount, expected: postCount });
+            return true; // En az 1 beğeni yapıldıysa başarılı say
+        } else {
+            console.log(`\n[BOOST] BAŞARISIZ: Hiç gönderi beğenilemedi`);
+            await sendLog('error', 'BOOST_FAILED', 'Boost başarısız: Beğenilebilecek gönderi bulunamadı');
+            return false;
+        }
+    } catch (error) {
+        console.error('[BOOST] Hata:', error.message);
+        await sendLog('error', 'BOOST_ERROR', `Boost hatası: ${error.message}`, { error: error.message });
+        return false;
+    }
+}
+
 module.exports = {
     sleep,
     login,
     likeTarget,
+    boostTarget,
     moveToCenterOfScreen,
     scrollAndSearchForDuration,
     findPostByKeyword,
@@ -801,5 +942,6 @@ module.exports = {
     likePost,
     commentPost,
     sharePost,
-    simulateHumanBrowsing // Eklendi
+    simulateHumanBrowsing,
+    ensureMaximized
 };

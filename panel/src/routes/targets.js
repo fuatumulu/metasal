@@ -154,4 +154,74 @@ router.post('/retry/:id', async (req, res) => {
     }
 });
 
+// Boost - Bu hedefi beğenmiş tüm profiller için boost görevi oluştur
+router.post('/boost/:id', async (req, res) => {
+    const targetId = parseInt(req.params.id);
+    const postCount = parseInt(req.body.postCount) || 4;
+
+    try {
+        // Bu hedefi beğenmiş profilleri bul
+        const likedProfiles = await prisma.profileLikedTarget.findMany({
+            where: { targetId },
+            include: { profile: true }
+        });
+
+        if (likedProfiles.length === 0) {
+            const targets = await prisma.target.findMany({
+                orderBy: { createdAt: 'desc' },
+                include: { _count: { select: { likedBy: true } } }
+            });
+            return res.render('targets', {
+                targets,
+                error: 'Bu hedefi henüz beğenmiş profil yok!',
+                success: null
+            });
+        }
+
+        let createdCount = 0;
+        for (const liked of likedProfiles) {
+            // Aktif profiller için görev oluştur
+            if (liked.profile.status === 'active') {
+                // Aynı görev zaten pending ise tekrar oluşturma
+                const existingTask = await prisma.botTask.findFirst({
+                    where: {
+                        profileId: liked.profileId,
+                        taskType: 'boost_target',
+                        targetId: targetId,
+                        status: 'pending'
+                    }
+                });
+
+                if (!existingTask) {
+                    await prisma.botTask.create({
+                        data: {
+                            profileId: liked.profileId,
+                            taskType: 'boost_target',
+                            targetId: targetId,
+                            status: 'pending',
+                            result: postCount.toString() // postCount'u result alanında sakla
+                        }
+                    });
+                    createdCount++;
+                }
+            }
+        }
+
+        const targets = await prisma.target.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { likedBy: true } } }
+        });
+        res.render('targets', {
+            targets,
+            error: null,
+            success: `Boost başlatıldı! ${createdCount} profil için görev oluşturuldu (${postCount} gönderi/profil).`
+        });
+    } catch (error) {
+        console.error('Target boost error:', error);
+        const targets = await prisma.target.findMany({ orderBy: { createdAt: 'desc' } });
+        res.render('targets', { targets, error: 'Boost görevi oluşturulamadı', success: null });
+    }
+});
+
 module.exports = router;
+

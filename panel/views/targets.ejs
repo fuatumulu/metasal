@@ -133,24 +133,35 @@
                                                             </div>
                                                         </td>
                                                         <td class="actions">
-                                                            <form action="/targets/toggle/<%= target.id %>"
-                                                                method="POST" style="display:inline">
-                                                                <button type="submit"
-                                                                    class="btn btn-sm <%= target.isActive ? 'btn-secondary' : 'btn-success' %>">
-                                                                    <%= target.isActive ? 'Pasif Et' : 'Aktif Et' %>
-                                                                </button>
-                                                            </form>
-                                                            <form action="/targets/retry/<%= target.id %>" method="POST"
-                                                                style="display:inline">
-                                                                <button type="submit"
-                                                                    class="btn btn-sm btn-warning">Yeniden Dene</button>
-                                                            </form>
-                                                            <form action="/targets/delete/<%= target.id %>"
-                                                                method="POST" style="display:inline"
-                                                                onsubmit="return confirm('Bu hedefi silmek istediğinize emin misiniz?')">
-                                                                <button type="submit"
-                                                                    class="btn btn-sm btn-danger">Sil</button>
-                                                            </form>
+                                                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                                                <!-- Üst satır: Durum ve Silme -->
+                                                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                                                    <form action="/targets/toggle/<%= target.id %>" method="POST" style="margin:0;">
+                                                                        <button type="submit" class="btn btn-sm <%= target.isActive ? 'btn-secondary' : 'btn-success' %>">
+                                                                            <%= target.isActive ? '⏸️ Pasif Et' : '▶️ Aktif Et' %>
+                                                                        </button>
+                                                                    </form>
+                                                                    <form action="/targets/retry/<%= target.id %>" method="POST" style="margin:0;">
+                                                                        <button type="submit" class="btn btn-sm btn-warning">🔄 Yeniden Dene</button>
+                                                                    </form>
+                                                                    <form action="/targets/delete/<%= target.id %>" method="POST" style="margin:0;"
+                                                                        onsubmit="return confirm('Bu hedefi silmek istediğinize emin misiniz?')">
+                                                                        <button type="submit" class="btn btn-sm btn-danger">🗑️ Sil</button>
+                                                                    </form>
+                                                                </div>
+                                                                <!-- Alt satır: Boost işlemi -->
+                                                                <div style="display:flex; gap:6px; align-items:center; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">
+                                                                    <form action="/targets/boost/<%= target.id %>" method="POST" style="margin:0; display:flex; gap:6px; align-items:center;">
+                                                                        <input type="number" name="postCount" value="4" min="1" max="10" 
+                                                                            style="width:50px; padding:4px 6px; border-radius:4px; border:1px solid #555; background:#2a2a2a; color:#fff; text-align:center;"
+                                                                            title="Beğenilecek gönderi sayısı">
+                                                                        <button type="submit" class="btn btn-sm" style="background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border:none;">
+                                                                            🚀 Boost'la
+                                                                        </button>
+                                                                    </form>
+                                                                    <span style="font-size:0.75rem; color:#888;">(<%= target._count.likedBy %> profil)</span>
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                     <% }); %>
