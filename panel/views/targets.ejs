@@ -133,109 +133,68 @@
                                                             </div>
                                                         </td>
                                                         <td class="actions">
-                                                            <!-- Modern Action Panel -->
-                                                            <div style="
-                                                                display:flex; 
-                                                                flex-direction:column; 
-                                                                gap:12px;
-                                                                padding:12px;
-                                                                background: rgba(255,255,255,0.03);
-                                                                backdrop-filter: blur(10px);
-                                                                border-radius:12px;
-                                                                border: 1px solid rgba(255,255,255,0.08);
-                                                            ">
-                                                                <!-- Quick Actions Row -->
-                                                                <div
-                                                                    style="display:flex; gap:8px; justify-content:center;">
+                                                            <div
+                                                                style="display:flex; flex-direction:column; gap:10px; min-width:180px;">
+                                                                <!-- Action Buttons -->
+                                                                <div style="display:flex; gap:6px;">
                                                                     <form action="/targets/toggle/<%= target.id %>"
-                                                                        method="POST" style="margin:0;">
-                                                                        <button type="submit"
-                                                                            title="<%= target.isActive ? 'Pasif Et' : 'Aktif Et' %>"
-                                                                            style="
-                                                                            width:36px; height:36px;
-                                                                            display:flex; align-items:center; justify-content:center;
-                                                                            background: <%= target.isActive ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' %>;
-                                                                            border:none; border-radius:10px;
-                                                                            cursor:pointer; font-size:16px;
-                                                                            transition: all 0.2s ease;
-                                                                            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+                                                                        method="POST" style="margin:0; flex:1;">
+                                                                        <button type="submit" style="
+                                                                            width:100%; padding:6px 10px;
+                                                                            display:flex; align-items:center; justify-content:center; gap:4px;
+                                                                            background: <%= target.isActive ? '#6c757d' : '#28a745' %>;
+                                                                            color:#fff; border:none; border-radius:6px;
+                                                                            cursor:pointer; font-size:12px; font-weight:500;
                                                                         ">
-                                                                            <%= target.isActive ? '⏸️' : '▶️' %>
+                                                                            <%= target.isActive ? '⏸ Pasif' : '▶ Aktif'
+                                                                                %>
                                                                         </button>
                                                                     </form>
                                                                     <form action="/targets/retry/<%= target.id %>"
                                                                         method="POST" style="margin:0;">
-                                                                        <button type="submit" title="Yeniden Dene"
-                                                                            style="
-                                                                            width:36px; height:36px;
-                                                                            display:flex; align-items:center; justify-content:center;
-                                                                            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-                                                                            border:none; border-radius:10px;
-                                                                            cursor:pointer; font-size:16px;
-                                                                            transition: all 0.2s ease;
-                                                                            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);
-                                                                        ">🔄</button>
+                                                                        <button type="submit" style="
+                                                                            padding:6px 10px;
+                                                                            display:flex; align-items:center; justify-content:center; gap:4px;
+                                                                            background:#f0ad4e; color:#000;
+                                                                            border:none; border-radius:6px;
+                                                                            cursor:pointer; font-size:12px; font-weight:500;
+                                                                        ">🔄 Tekrar</button>
                                                                     </form>
                                                                     <form action="/targets/delete/<%= target.id %>"
                                                                         method="POST" style="margin:0;"
                                                                         onsubmit="return confirm('Bu hedefi silmek istediğinize emin misiniz?')">
-                                                                        <button type="submit" title="Sil" style="
-                                                                            width:36px; height:36px;
+                                                                        <button type="submit" style="
+                                                                            padding:6px 10px;
                                                                             display:flex; align-items:center; justify-content:center;
-                                                                            background: linear-gradient(135deg, #434343 0%, #000000 100%);
-                                                                            border:none; border-radius:10px;
-                                                                            cursor:pointer; font-size:16px;
-                                                                            transition: all 0.2s ease;
-                                                                            opacity:0.7;
-                                                                        ">🗑️</button>
+                                                                            background:#dc3545; color:#fff;
+                                                                            border:none; border-radius:6px;
+                                                                            cursor:pointer; font-size:12px; font-weight:500;
+                                                                        ">🗑</button>
                                                                     </form>
                                                                 </div>
-
-                                                                <!-- Boost Section -->
+                                                                <!-- Boost -->
                                                                 <form action="/targets/boost/<%= target.id %>"
                                                                     method="POST" style="
-                                                                    margin:0; 
-                                                                    display:flex; 
-                                                                    gap:8px; 
-                                                                    align-items:center;
-                                                                    padding:10px 12px;
-                                                                    background: linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%);
-                                                                    border-radius:10px;
-                                                                    border: 1px solid rgba(102,126,234,0.3);
+                                                                    margin:0; display:flex; gap:6px; align-items:center;
+                                                                    padding:8px 10px;
+                                                                    background: rgba(102,126,234,0.1);
+                                                                    border-radius:8px;
+                                                                    border: 1px solid rgba(102,126,234,0.25);
                                                                 ">
                                                                     <input type="number" name="postCount" value="4"
                                                                         min="1" max="10" style="
-                                                                        width:44px; 
-                                                                        padding:8px 4px;
-                                                                        font-size:14px; 
-                                                                        font-weight:600;
-                                                                        border-radius:8px; 
-                                                                        border:none;
-                                                                        background: rgba(0,0,0,0.3);
-                                                                        color:#fff; 
-                                                                        text-align:center;
-                                                                        outline:none;
+                                                                        width:38px; padding:6px 4px;
+                                                                        font-size:13px; font-weight:600;
+                                                                        border-radius:6px; border:1px solid #444;
+                                                                        background:#1a1a2e; color:#fff; text-align:center;
                                                                     ">
                                                                     <button type="submit" style="
-                                                                        flex:1;
-                                                                        padding:8px 16px;
-                                                                        font-size:13px;
-                                                                        font-weight:600;
-                                                                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                                                        color:#fff;
-                                                                        border:none;
-                                                                        border-radius:8px;
-                                                                        cursor:pointer;
-                                                                        transition: all 0.3s ease;
-                                                                        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-                                                                        display:flex;
-                                                                        align-items:center;
-                                                                        justify-content:center;
-                                                                        gap:6px;
-                                                                    ">
-                                                                        <span style="font-size:14px;">🚀</span>
-                                                                        <span>Boost</span>
-                                                                    </button>
+                                                                        flex:1; padding:6px 12px;
+                                                                        display:flex; align-items:center; justify-content:center; gap:5px;
+                                                                        background: linear-gradient(135deg, #667eea, #764ba2);
+                                                                        color:#fff; border:none; border-radius:6px;
+                                                                        cursor:pointer; font-size:12px; font-weight:600;
+                                                                    ">🚀 Boost</button>
                                                                 </form>
                                                             </div>
                                                         </td>
