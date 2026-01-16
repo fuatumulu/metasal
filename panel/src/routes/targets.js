@@ -182,13 +182,14 @@ router.post('/boost/:id', async (req, res) => {
         for (const liked of likedProfiles) {
             // Aktif profiller için görev oluştur
             if (liked.profile.status === 'active') {
-                // Aynı görev zaten pending ise tekrar oluşturma
+                // Bu profilin bu hedef için DAHA ÖNCEDEN herhangi bir boost görevi olup olmadığını kontrol et
                 const existingTask = await prisma.botTask.findFirst({
                     where: {
                         profileId: liked.profileId,
                         taskType: 'boost_target',
                         targetId: targetId,
-                        status: 'pending'
+                        // Durum fark etmeksizin (completed, pending, processing) kontrol et
+                        status: { in: ['pending', 'processing', 'completed'] }
                     }
                 });
 
