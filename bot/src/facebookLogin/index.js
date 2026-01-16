@@ -17,6 +17,7 @@ const VisionProfileService = require('./VisionProfileService');
 const CookieService = require('./CookieService');
 const SessionValidator = require('./SessionValidator');
 const OperatorUI = require('./OperatorUI');
+const ProxyIPService = require('./ProxyIPService');
 
 /**
  * Facebook Login Job Orchestrator
@@ -193,6 +194,10 @@ async function processAccount(account, threadId = 1) {
     console.log(`${'='.repeat(60)}\n`);
 
     try {
+        // 0. Proxy IP değiştir (yeni oturum için temiz IP)
+        console.log(`[Thread-${threadId}:FBLogin] Adım 0: Proxy IP değiştiriliyor...`);
+        await ProxyIPService.changeProxyIP(account.proxyIP);
+
         // 1. Profil oluştur
         await job.createVisionProfile();
 
@@ -268,6 +273,11 @@ async function processAccount(account, threadId = 1) {
  */
 async function initialize() {
     console.log('[FBLogin] Modül başlatılıyor...');
+
+    // Proxy IP change config'lerini yükle
+    ProxyIPService.initialize();
+
+    // Vision proxy cache'i yükle
     await VisionProfileService.loadProxies();
 
     if (!VisionProfileService.isProxyCacheLoaded()) {
