@@ -77,14 +77,13 @@ async function processTask(task, threadId) {
     await sendLog('info', 'TASK_START', `[Thread-${threadId}] Görev #${task.id} başlatıldı`, { taskId: task.id, type: task.taskType, threadId });
 
     if (task.taskType === 'sync_profiles') {
-        console.log(`[Thread-${threadId}] Profil senkronizasyonu başlatılıyor...`);
+        // ... (Sync logic remains simplified or same, but for consistency let's keep it clean)
         try {
             const profiles = await listProfiles();
             if (profiles.length > 0) {
                 const success = await pushProfiles(profiles);
                 if (success) {
                     await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
-                    console.log(`[Thread-${threadId}] Senkronizasyon başarılı: ${profiles.length} profil.`);
                 } else {
                     await reportTaskResult(task.id, 'failed', 'Profiler panele gönderilemedi');
                 }
@@ -101,252 +100,113 @@ async function processTask(task, threadId) {
     const profile = task.profile;
     const visionId = profile.visionId;
     const folderId = profile.folderId;
-    // proxyHost yoksa ENV'deki ilk carrier'ı kullan
     const proxyHost = profile.proxyHost || getDefaultProxyHost() || 'DEFAULT';
+
     let browser = null;
+    let isCarrierLocked = false;
+    let shouldRotateIP = false;
 
     try {
-        // Carrier'ı atomik olarak kilitle (kontrol + kilitleme tek seferde)
+        // 1. Carrier Lock
         if (!tryLockCarrier(proxyHost, visionId)) {
             console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul, görev tekrar pending yapılıyor...`);
-            // Görevi tekrar pending yap - başka thread alabilsin
             await reportTaskResult(task.id, 'pending', 'Carrier meşgul - yeniden kuyrukta');
             return;
         }
+        isCarrierLocked = true;
 
-        // Profil açmadan önce delay kontrolü
+        // 2. Wait for Slot
         await waitForProfileSlot(threadId);
 
-        console.log(`[Thread-${threadId}] Profil başlatılıyor: ${profile.name}`);
-
-        // Browser'ı başlat (3 deneme, 5sn arayla)
+        // 3. Start Browser
         let startAttempts = 0;
         const maxStartAttempts = 3;
-
         while (startAttempts < maxStartAttempts) {
             startAttempts++;
-            console.log(`[Thread-${threadId}] Browser başlatma denemesi ${startAttempts}/${maxStartAttempts}...`);
-
             browser = await startProfile(folderId, visionId);
             if (browser) break;
-
-            if (startAttempts < maxStartAttempts) {
-                console.log(`[Thread-${threadId}] Browser başlatılamadı, 5 saniye sonra tekrar denenecek...`);
-                await sleep(5000);
-            }
+            if (startAttempts < maxStartAttempts) await sleep(5000);
         }
 
         if (!browser) {
-            console.error(`[Thread-${threadId}] Browser ${maxStartAttempts} denemede başlatılamadı`);
-            await reportTaskResult(task.id, 'failed', 'Browser başlatılamadı veya Vision profil meşgul');
-
-            // Carrier kilidini aç (IP değiştirmeye gerek yok çünkü profil açılmadı)
-            console.log(`[Thread-${threadId}] Browser fail - carrier kilidi açılıyor...`);
-            unlockCarrier(proxyHost);
-            return;
+            throw new Error('Browser başlatılamadı veya Vision profil meşgul');
         }
 
+        shouldRotateIP = true; // Tarayıcı açıldıysa artık IP değişmeli
         const pages = await browser.pages();
         const page = pages[0] || await browser.newPage();
-
-        // Pencereyi gerekirse büyüt
         await ensureMaximized(page);
 
-        // Facebook'a git ve oturumun oturmasını bekle
-        console.log(`[Thread-${threadId}] Facebook ana sayfası açılıyor...`);
+        // 4. Facebook Check
         await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-        // Facebook Stabilizasyonu: Saçma yenilemeleri engellemek için bekle ve reload et
-        console.log(`[Thread-${threadId}] Facebook oturumu sabitleniyor (10 sn bekleme + reload)...`);
         await sleep(10000);
-        try {
-            await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-        } catch (e) {
-            console.log(`[Thread-${threadId}] Reload uyarısı (devam ediliyor):`, e.message);
-        }
-        console.log(`[Thread-${threadId}] Oturum sabitlendi, doğrulama yapılıyor...`);
+        try { await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }); } catch (e) { }
 
-        // Oturum Doğrulaması: Bildirimler butonu var mı?
         const hasSession = await page.evaluate(() => {
-            const labels = [
-                'bildirimler', 'notifications',
-                'notifications button', 'bildirimler butonu',
-                'messenger', 'mesajlar' // Alternatif kontrol noktaları
-            ];
-            const elements = Array.from(document.querySelectorAll('[aria-label]'));
-            return elements.some(el => {
-                const label = el.getAttribute('aria-label').toLowerCase();
-                return labels.includes(label);
-            });
+            const labels = ['bildirimler', 'notifications', 'messenger', 'mesajlar'];
+            return Array.from(document.querySelectorAll('[aria-label]'))
+                .some(el => labels.includes(el.getAttribute('aria-label').toLowerCase()));
         });
+
         if (!hasSession) {
-            await sendLog('error', 'SESSION_ERROR', `[Thread-${threadId}] Oturum doğrulaması başarısız: Profile: ${profile.name}`, { visionId, threadId });
-            console.error(`[Thread-${threadId}] HATA: Oturum doğrulaması başarısız! (Bildirimler/Messenger butonu bulunamadı)`);
-            await reportTaskResult(task.id, 'failed', 'Oturum doğrulaması başarısız: Facebook girişi aktif değil');
-
-            // Vision'da profil status'unu ERROR olarak güncelle
-            console.log(`[Thread-${threadId}] Vision'da profil status'u ERROR olarak güncelleniyor...`);
             await updateProfileStatus(folderId, visionId, 'ERROR');
-
-            // Tarayıcıyı kapat ve sonlandır
-            console.log(`[Thread-${threadId}] Oturum geçersiz olduğu için tarayıcı kapatılıyor...`);
-            await stopProfile(folderId, visionId);
-
-            // IP değiştir ve carrier kilidini aç
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
-            await changeIP(proxyHost);
-            unlockCarrier(proxyHost);
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
-            return;
+            throw new Error('Oturum doğrulaması başarısız: Facebook girişi aktif değil');
         }
 
-        console.log(`[Thread-${threadId}] Oturum doğrulandı, işleme geçiliyor.`);
-
-        // Görev tipine göre işlem yap
+        // 5. Task Logic
         let success = false;
-
         switch (task.taskType) {
             case 'like_target':
-                if (task.target) {
-                    // Hedef sayfaya git
-                    success = await likeTarget(page, task.target.url, task.target.type);
-                }
+                success = await likeTarget(page, task.target.url, task.target.type);
                 break;
-
             case 'post_action':
-                if (task.postTask) {
-                    // === POST ACTION AKIŞI ===
-                    // 1. Kelimeye göre gönderi bul (40sn + 30sn + 30sn retry mekanizması)
-                    console.log(`[Thread-${threadId}] --- POST ACTION: Gönderi aranıyor ---`);
-                    const found = await findPostByKeyword(page, task.postTask.searchKeyword);
-
-                    if (!found) {
-                        // Gönderi bulunamadı - profili kapat ve görevi başka profile devret
-                        console.log(`[Thread-${threadId}] --- GÖREV DEVRİ ---`);
-                        console.log(`[Thread-${threadId}] Gönderi bulunamadı. Profil kapatılıyor ve görev başka profile devredilecek.`);
-
-                        // Görevi failed olarak işaretle (başka profil devralacak)
-                        await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı - başka profile devrediliyor');
-
-                        // Tarayıcıyı kapat
-                        console.log(`[Thread-${threadId}] Tarayıcı kapatılıyor...`);
-                        await stopProfile(folderId, visionId);
-
-                        // IP değiştir ve carrier kilidini aç
-                        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
-                        await changeIP(proxyHost);
-                        unlockCarrier(proxyHost);
-                        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
-                        return;
-                    }
-
-                    // 3. Gönderi bulundu - Action tipini al ve işlemi gerçekleştir
-                    const action = task.result; // like, comment, share
-                    console.log(`[Thread-${threadId}] --- POST ACTION: ${action.toUpperCase()} işlemi yapılıyor ---`);
-                    await sendLog('info', 'POST_ACTION_START', `[Thread-${threadId}] ${action} işlemi başlatılıyor`, { action, postTaskId: task.postTaskId, threadId });
-
-                    switch (action) {
-                        case 'like':
-                            success = await likeCurrentPost(page);
-                            break;
-
-                        case 'comment':
-                            // Panelden rastgele yorum çek
-                            try {
-                                const commentRes = await axios.get(`${PANEL_URL}/api/comments/random`);
-                                const commentText = commentRes.data.comment ? commentRes.data.comment.text : null;
-                                if (commentText) {
-                                    success = await commentCurrentPost(page, commentText);
-                                } else {
-                                    console.error(`[Thread-${threadId}] Yorum havuzu boş`);
-                                    await reportTaskResult(task.id, 'failed', 'Yorum havuzu boş');
-                                    console.log(`[Thread-${threadId}] Hata nedeniyle 5 saniye içinde kapatılacak...`);
-                                    await sleep(5000);
-                                    await stopProfile(folderId, visionId);
-                                    return;
-                                }
-                            } catch (e) {
-                                console.error(`[Thread-${threadId}] Yorum çekilemedi:`, e.message);
-                                await reportTaskResult(task.id, 'failed', 'Yorum havuzuna ulaşılamadı');
-                                console.log(`[Thread-${threadId}] Hata nedeniyle 5 saniye içinde kapatılacak...`);
-                                await sleep(5000);
-                                await stopProfile(folderId, visionId);
-                                return;
-                            }
-                            break;
-
-                        case 'share':
-                            success = await shareCurrentPost(page);
-                            break;
-                    }
+                const found = await findPostByKeyword(page, task.postTask.searchKeyword);
+                if (!found) {
+                    await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı - devrediliyor');
+                    return; // finally bloğu IP rotasyonunu ve kilit açmayı yapacak
+                }
+                const action = task.result;
+                switch (action) {
+                    case 'like': success = await likeCurrentPost(page); break;
+                    case 'comment':
+                        const commentRes = await axios.get(`${PANEL_URL}/api/comments/random`);
+                        const commentText = commentRes.data.comment?.text;
+                        if (commentText) success = await commentCurrentPost(page, commentText);
+                        break;
+                    case 'share': success = await shareCurrentPost(page); break;
                 }
                 break;
-
             case 'boost_target':
-                if (task.target) {
-                    // Boost: Hedef sayfa/grubun gönderilerini beğen
-                    // postCount, task.result alanında saklanıyor
-                    const postCount = parseInt(task.result) || 4;
-                    console.log(`[Thread-${threadId}] --- BOOST TARGET: ${task.target.url} (${postCount} gönderi) ---`);
-                    success = await boostTarget(page, task.target.url, postCount);
-                }
+                const postCount = parseInt(task.result) || 4;
+                success = await boostTarget(page, task.target.url, postCount);
                 break;
         }
 
-        // Sonucu bildir
-        await reportTaskResult(task.id, success ? 'completed' : 'failed', success ? 'Başarılı' : 'Başarısız');
-        await sendLog(success ? 'success' : 'error', 'TASK_END', `[Thread-${threadId}] Görev #${task.id} ${success ? 'başarıyla tamamlandı' : 'başarısız oldu'}`, { taskId: task.id, success, threadId });
-
-        if (success) {
-            // Başarılı işlem sonrası doğal gezinme (cool-down)
-            await simulateHumanBrowsing(page);
-
-            console.log(`[Thread-${threadId}] --- OTOMATİK TARAYICI KAPATMA ---`);
-            console.log(`[Thread-${threadId}] İşlem tamamlandı. Tarayıcı kapatılıyor...`);
-            await stopProfile(folderId, visionId);
-
-            // IP değiştir ve carrier kilidini aç
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
-            await changeIP(proxyHost);
-            unlockCarrier(proxyHost);
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
-        } else {
-            // Başarısız işlem sonrası kısa bekleme ve kapatma
-            console.log(`[Thread-${threadId}] Görev başarısız oldu. 5 saniye içinde tarayıcı kapatılacak...`);
-            await sleep(5000);
-            await stopProfile(folderId, visionId);
-
-            // IP değiştir ve carrier kilidini aç
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME BAŞLATILIYOR ---`);
-            await changeIP(proxyHost);
-            unlockCarrier(proxyHost);
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
-        }
+        if (success) await simulateHumanBrowsing(page);
+        await reportTaskResult(task.id, success ? 'completed' : 'failed', success ? 'Başarılı' : 'İşlem başarısız');
+        await sendLog(success ? 'success' : 'error', 'TASK_END', `Görev #${task.id} ${success ? 'tamamlandı' : 'başarısız'}`, { taskId: task.id, threadId });
 
     } catch (error) {
-        console.error(`[Thread-${threadId}] Görev işleme hatası:`, error.message);
+        console.error(`[Thread-${threadId}] Hata:`, error.message);
         await reportTaskResult(task.id, 'failed', error.message);
-
-        // Hata durumunda profili kapat, IP değiştir ve carrier kilidini aç
-        try {
-            if (browser) {
-                console.log(`[Thread-${threadId}] Hata sonrası profil kapatılıyor...`);
-                await stopProfile(folderId, visionId);
-            }
-        } catch (e) {
-            console.log(`[Thread-${threadId}] Profil kapatma uyarısı:`, e.message);
-        }
-
-        console.log(`[Thread-${threadId}] --- HATA SONRASI PROXY IP DEĞİŞTİRME ---`);
-        await changeIP(proxyHost);
-        unlockCarrier(proxyHost);
-        console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRME TAMAMLANDI ---`);
+        await sendLog('error', 'TASK_ERROR', `Hata: ${error.message}`, { taskId: task.id, threadId });
     } finally {
-        // Bağlantıyı kopar (Vision profili stopProfile ile zaten kapandıysa hata vermez)
         if (browser) {
             try {
+                console.log(`[Thread-${threadId}] Tarayıcı kapatılıyor...`);
+                await stopProfile(folderId, visionId);
                 await browser.disconnect();
             } catch (e) { }
+        }
+
+        if (shouldRotateIP) {
+            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRİLİYOR ---`);
+            await changeIP(proxyHost);
+        }
+
+        if (isCarrierLocked) {
+            console.log(`[Thread-${threadId}] Carrier kilidi açılıyor.`);
+            unlockCarrier(proxyHost);
         }
     }
 }

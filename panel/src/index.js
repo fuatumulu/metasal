@@ -28,12 +28,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Session
+if (!process.env.SESSION_SECRET) {
+    console.warn('UYARI: SESSION_SECRET ayarlanmamış! Güvenlik için lütfen .env dosyasında tanımlayın.');
+}
+
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'default-secret-key',
+    secret: process.env.SESSION_SECRET || 'fallback-extremely-long-and-random-secret-for-dev-only-change-this',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false,
+        secure: process.env.NODE_ENV === 'production', // Üretim ortamında sadece HTTPS
+        httpOnly: true, // XSS koruması
         maxAge: 24 * 60 * 60 * 1000 // 24 saat
     }
 }));

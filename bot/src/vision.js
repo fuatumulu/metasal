@@ -12,6 +12,21 @@ const VISION_API_TOKEN = process.env.VISION_API_TOKEN;
 let proxyCache = new Map();
 
 /**
+ * Hassas verileri loglardan temizleyen yardımcı
+ */
+function maskSensitiveData(data) {
+    if (!data) return data;
+    const masked = JSON.parse(JSON.stringify(data));
+    // Header'lardaki tokenları temizle
+    if (masked.headers) {
+        if (masked.headers['X-Token']) masked.headers['X-Token'] = '***MASKED***';
+        if (masked.headers['Authorization']) masked.headers['Authorization'] = '***MASKED***';
+    }
+    // URL'deki query parametrelerini temizle (gerekirse)
+    return masked;
+}
+
+/**
  * Tüm proxy'leri listele ve cache'le
  */
 async function loadProxies() {
@@ -38,6 +53,9 @@ async function loadProxies() {
         return proxyCache;
     } catch (error) {
         console.error('[Vision] Proxy listesi alma hatası:', error.message);
+        if (error.config) {
+            console.error('[Vision] Hata detayları (Maskelenmiş):', maskSensitiveData(error.config));
+        }
         return proxyCache;
     }
 }
@@ -175,6 +193,9 @@ async function listProfiles() {
         );
     } catch (error) {
         console.error('Profil listesi alma hatası:', error.message);
+        if (error.config) {
+            console.error('[Vision] Hata detayları (Maskelenmiş):', maskSensitiveData(error.config));
+        }
         return [];
     }
 }
@@ -243,6 +264,9 @@ async function startProfile(folderId, profileId) {
         return browser;
     } catch (error) {
         console.error('Profil başlatma hatası:', error.message);
+        if (error.config) {
+            console.error('[Vision] Hata detayları (Maskelenmiş):', maskSensitiveData(error.config));
+        }
         return null;
     }
 }
@@ -334,6 +358,9 @@ async function updateProfileStatus(folderId, profileId, statusName) {
         return true;
     } catch (error) {
         console.error('[Vision] Profil status güncelleme hatası:', error.message);
+        if (error.config) {
+            console.error('[Vision] Hata detayları (Maskelenmiş):', maskSensitiveData(error.config));
+        }
         return false;
     }
 }
