@@ -315,6 +315,19 @@ router.post('/profiles/push', async (req, res) => {
             }
         }
 
+        // Senkronize edilen klasörlerde olup artık listede olmayanları sil
+        const syncedVisionIds = profiles.map(p => p.visionId);
+        const folderIds = [...new Set(profiles.map(p => p.folderId))];
+
+        if (folderIds.length > 0) {
+            await prisma.visionProfile.deleteMany({
+                where: {
+                    folderId: { in: folderIds },
+                    visionId: { notIn: syncedVisionIds }
+                }
+            });
+        }
+
         res.json({ success: true, addedCount, updatedCount });
     } catch (error) {
         console.error('Profile push error:', error);
