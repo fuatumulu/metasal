@@ -1,40 +1,46 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MetaSal - Facebook Yönetim Paneli</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
-  <% if (typeof currentPath !== 'undefined' && currentPath !== '/setup' && currentPath !== '/login') { %>
-  <nav class="sidebar">
-    <div class="sidebar-header">
-      <h2>MetaSal</h2>
-    </div>
-    <ul class="nav-links">
-      <li class="<%= currentPath === '/dashboard' ? 'active' : '' %>">
-        <a href="/dashboard">📊 Dashboard</a>
-      </li>
-      <li class="<%= currentPath === '/accounts' ? 'active' : '' %>">
-        <a href="/accounts">👤 Hesaplar</a>
-      </li>
-      <li class="<%= currentPath === '/targets' ? 'active' : '' %>">
-        <a href="/targets">🎯 Hedefler</a>
-      </li>
-      <li class="<%= currentPath === '/posts' ? 'active' : '' %>">
-        <a href="/posts">📝 Gönderiler</a>
-      </li>
-    </ul>
-    <div class="sidebar-footer">
-      <a href="/logout" class="logout-btn">🚪 Çıkış</a>
-    </div>
-  </nav>
-  <main class="content">
-    <%- body %>
-  </main>
-  <% } else { %>
-    <%- body %>
-  <% } %>
+  <% if (typeof currentPath !=='undefined' && currentPath !=='/setup' && currentPath !=='/login' ) { %>
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h2>MetaSal</h2>
+      </div>
+      <ul class="nav-links">
+        <li class="<%= currentPath === '/dashboard' ? 'active' : '' %>">
+          <a href="/dashboard">📊 Dashboard</a>
+        </li>
+        <li class="<%= currentPath === '/accounts' ? 'active' : '' %>">
+          <a href="/accounts">👤 Hesaplar</a>
+        </li>
+        <li class="<%= currentPath === '/targets' ? 'active' : '' %>">
+          <a href="/targets">🎯 Hedefler</a>
+        </li>
+        <li class="<%= currentPath === '/posts' ? 'active' : '' %>">
+          <a href="/posts">📝 Gönderiler</a>
+        </li>
+        <li class="<%= currentPath === '/fb-login' ? 'active' : '' %>">
+          <a href="/fb-login">🔐 Facebook Login</a>
+        </li>
+      </ul>
+      <div class="sidebar-footer">
+        <a href="/logout" class="logout-btn">🚪 Çıkış</a>
+      </div>
+    </nav>
+    <main class="content">
+      <%- body %>
+    </main>
+    <% } else { %>
+      <%- body %>
+        <% } %>
 </body>
+
 </html>

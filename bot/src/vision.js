@@ -391,6 +391,114 @@ async function updateProfileStatus(folderId, profileId, statusName) {
     }
 }
 
+/**
+ * En son fingerprint'i al
+ * Skill Dokümantasyonu: GET /fingerprints/{platform}/latest
+ */
+async function getLatestFingerprint(platform = 'windows') {
+    try {
+        const headers = { 'X-Token': VISION_API_TOKEN };
+        const res = await axios.get(`${VISION_CLOUD_API}/fingerprints/${platform}/latest`, { headers });
+        console.log(`[Vision] ${platform} için fingerprint alındı`);
+        return res.data.data || res.data;
+    } catch (error) {
+        console.error('[Vision] Fingerprint alma hatası:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Yeni profil oluştur
+ * Skill Dokümantasyonu: POST /folders/{folderId}/profiles
+ */
+async function createProfile(folderId, profileData) {
+    try {
+        const headers = {
+            'X-Token': VISION_API_TOKEN,
+            'Content-Type': 'application/json'
+        };
+
+        // Fingerprint yoksa al
+        if (!profileData.fingerprint) {
+            const fingerprint = await getLatestFingerprint(profileData.platform || 'windows');
+            if (!fingerprint) {
+                throw new Error('Fingerprint alınamadı');
+            }
+            profileData.fingerprint = fingerprint;
+        }
+
+        const res = await axios.post(
+            `${VISION_CLOUD_API}/folders/${folderId}/profiles`,
+            profileData,
+            { headers }
+        );
+
+        const profile = res.data.data || res.data;
+        console.log(`[Vision] Profil oluşturuldu: ${profile.id} (${profileData.profile_name})`);
+
+        return {
+            id: profile.id,
+            folderId: folderId,
+            name: profileData.profile_name
+        };
+    } catch (error) {
+        console.error('[Vision] Profil oluşturma hatası:', error.response?.data || error.message);
+        throw error;
+    }
+}
+
+/**
+ * Cookie'leri profile import et
+ * Skill Dokümantasyonu: POST /cookies/import/{folderId}/{profileId}
+ */
+async function importCookies(folderId, profileId, cookies) {
+    try {
+        const headers = {
+            'X-Token': VISION_API_TOKEN,
+            'Content-Type': 'application/json'
+        };
+
+        await axios.post(
+            `${VISION_CLOUD_API}/cookies/import/${folderId}/${profileId}`,
+            { cookies },
+            { headers }
+        );
+
+        console.log(`[Vision] ${cookies.length} cookie import edildi`);
+        return true;
+    } catch (error) {
+        console.error('[Vision] Cookie import hatası:', error.response?.data || error.message);
+        return false;
+    }
+}
+
+/**
+ * Profile cookie'lerini export et
+ * Skill Dokümantasyonu: GET /cookies/{folderId}/{profileId}
+ */
+async function exportCookies(folderId, profileId) {
+    try {
+        const headers = { 'X-Token': VISION_API_TOKEN };
+        const res = await axios.get(`${VISION_CLOUD_API}/cookies/${folderId}/${profileId}`, { headers });
+        return res.data.data || res.data;
+    } catch (error) {
+        console.error('[Vision] Cookie export hatası:', error.message);
+        return null;
+    }
+}
+
+/**
+ * IP adresine göre proxy bul
+ */
+function findProxyByIP(ip) {
+    for (const [proxyId, proxy] of proxyCache.entries()) {
+        if (proxy.host === ip || proxy.host?.includes(ip)) {
+            return { id: proxyId, ...proxy };
+        }
+    }
+    return null;
+}
+
 module.exports = {
     listProfiles,
     startProfile,
@@ -398,5 +506,10 @@ module.exports = {
     getProxyHostPort,
     loadProxies,
     updateProfileStatus,
-    getStatusList
+    getStatusList,
+    getLatestFingerprint,
+    createProfile,
+    importCookies,
+    exportCookies,
+    findProxyByIP
 };

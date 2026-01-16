@@ -115,3 +115,19 @@ model ProfilePostInteraction {
 
   @@unique([profileId, postTaskId, action])
 }
+
+// Facebook Login Modülü - Toplu Hesap Yönetimi
+model FacebookAccount {
+  id           Int      @id @default(autoincrement())
+  username     String   // Facebook kullanıcı adı / e-posta
+  password     String   // Şifre
+  cookie       String?  @db.LongText  // Base64 cookie (opsiyonel)
+  proxyIP      String   // Kullanılacak proxy IP adresi
+  status       String   @default("pending") // pending, processing, success, cookie_failed, login_failed, needs_verify
+  visionId     String?  // Oluşturulan Vision profil UUID'si
+  folderId     String?  // Vision folder UUID
+  errorMessage String?  @db.Text
+  retryCount   Int      @default(0)  // Kaç kez denendiği
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

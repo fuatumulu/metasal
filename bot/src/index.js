@@ -67,147 +67,56 @@ app.get('/vision-profiles', async (req, res) => {
     }
 });
 
+const JobOrchestrator = require('./taskHandler');
+
 /**
- * Görevi işle
+ * Görevi işle (Orchestrator Wrapper)
  */
 async function processTask(task, threadId) {
-    console.log(`\n[Thread-${threadId}] ========================================`);
-    console.log(`[Thread-${threadId}] Görev #${task.id} işleniyor: ${task.taskType}`);
-    console.log(`[Thread-${threadId}] ========================================`);
-    await sendLog('info', 'TASK_START', `[Thread-${threadId}] Görev #${task.id} başlatıldı`, { taskId: task.id, type: task.taskType, threadId });
-
+    // 1. Özel Görev: Senkronizasyon (Tarayıcı gerektirmez)
     if (task.taskType === 'sync_profiles') {
-        // ... (Sync logic remains simplified or same, but for consistency let's keep it clean)
         try {
             const profiles = await listProfiles();
             if (profiles.length > 0) {
                 const success = await pushProfiles(profiles);
-                if (success) {
-                    await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
-                } else {
-                    await reportTaskResult(task.id, 'failed', 'Profiler panele gönderilemedi');
-                }
+                if (success) await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
             } else {
                 await reportTaskResult(task.id, 'failed', 'Vision API\'dan profil alınamadı');
             }
         } catch (err) {
-            console.error(`[Thread-${threadId}] Sync error:`, err.message);
             await reportTaskResult(task.id, 'failed', err.message);
         }
         return;
     }
 
-    const profile = task.profile;
-    const visionId = profile.visionId;
-    const folderId = profile.folderId;
-    const proxyHost = profile.proxyHost || getDefaultProxyHost() || 'DEFAULT';
-
-    let browser = null;
-    let isCarrierLocked = false;
-    let shouldRotateIP = false;
+    // 2. Browser Tabanlı Görevler (Like, Comment, Boost vb.)
+    const job = new JobOrchestrator(task, threadId);
 
     try {
-        // 1. Carrier Lock
-        if (!tryLockCarrier(proxyHost, visionId)) {
-            console.log(`[Thread-${threadId}] Carrier ${proxyHost} meşgul, görev tekrar pending yapılıyor...`);
-            await reportTaskResult(task.id, 'pending', 'Carrier meşgul - yeniden kuyrukta');
-            return;
+        // Kaynakları hazırla (Proxy kilitleri)
+        const ready = await job.prepareResources(waitForProfileSlot);
+        if (!ready) return;
+
+        // Tarayıcıyı başlat ve Facebook'u doğrula
+        await job.initBrowser();
+        await job.validateLogin();
+
+        // Aksiyonu gerçekleştir
+        const success = await job.runAction();
+
+        // Başarıyla bitir
+        if (success) {
+            await job.complete();
+        } else {
+            await job.fail(new Error('İşlem Facebook tarafında başarısız oldu.'));
         }
-        isCarrierLocked = true;
-
-        // 2. Wait for Slot
-        await waitForProfileSlot(threadId);
-
-        // 3. Start Browser
-        let startAttempts = 0;
-        const maxStartAttempts = 3;
-        while (startAttempts < maxStartAttempts) {
-            startAttempts++;
-            browser = await startProfile(folderId, visionId);
-            if (browser) break;
-            if (startAttempts < maxStartAttempts) await sleep(5000);
-        }
-
-        if (!browser) {
-            throw new Error('Browser başlatılamadı veya Vision profil meşgul');
-        }
-
-        shouldRotateIP = true; // Tarayıcı açıldıysa artık IP değişmeli
-        const pages = await browser.pages();
-        const page = pages[0] || await browser.newPage();
-        await ensureMaximized(page);
-
-        // 4. Facebook Check
-        await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await sleep(10000);
-        try { await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }); } catch (e) { }
-
-        const hasSession = await page.evaluate(() => {
-            const labels = ['bildirimler', 'notifications', 'messenger', 'mesajlar'];
-            return Array.from(document.querySelectorAll('[aria-label]'))
-                .some(el => labels.includes(el.getAttribute('aria-label').toLowerCase()));
-        });
-
-        if (!hasSession) {
-            await updateProfileStatus(folderId, visionId, 'ERROR');
-            throw new Error('Oturum doğrulaması başarısız: Facebook girişi aktif değil');
-        }
-
-        // 5. Task Logic
-        let success = false;
-        switch (task.taskType) {
-            case 'like_target':
-                success = await likeTarget(page, task.target.url, task.target.type);
-                break;
-            case 'post_action':
-                const found = await findPostByKeyword(page, task.postTask.searchKeyword);
-                if (!found) {
-                    await reportTaskResult(task.id, 'failed', 'Gönderi bulunamadı - devrediliyor');
-                    return; // finally bloğu IP rotasyonunu ve kilit açmayı yapacak
-                }
-                const action = task.result;
-                switch (action) {
-                    case 'like': success = await likeCurrentPost(page); break;
-                    case 'comment':
-                        const commentRes = await axios.get(`${PANEL_URL}/api/comments/random`);
-                        const commentText = commentRes.data.comment?.text;
-                        if (commentText) success = await commentCurrentPost(page, commentText);
-                        break;
-                    case 'share': success = await shareCurrentPost(page); break;
-                }
-                break;
-            case 'boost_target':
-                const postCount = parseInt(task.result) || 4;
-                success = await boostTarget(page, task.target.url, postCount);
-                break;
-        }
-
-        if (success) await simulateHumanBrowsing(page);
-        await reportTaskResult(task.id, success ? 'completed' : 'failed', success ? 'Başarılı' : 'İşlem başarısız');
-        await sendLog(success ? 'success' : 'error', 'TASK_END', `Görev #${task.id} ${success ? 'tamamlandı' : 'başarısız'}`, { taskId: task.id, threadId });
 
     } catch (error) {
-        console.error(`[Thread-${threadId}] Hata:`, error.message);
-        await reportTaskResult(task.id, 'failed', error.message);
-        await sendLog('error', 'TASK_ERROR', `Hata: ${error.message}`, { taskId: task.id, threadId });
+        // Operasyonel hataları raporla
+        await job.fail(error);
     } finally {
-        if (browser) {
-            try {
-                console.log(`[Thread-${threadId}] Tarayıcı kapatılıyor...`);
-                await stopProfile(folderId, visionId);
-                await browser.disconnect();
-            } catch (e) { }
-        }
-
-        if (shouldRotateIP) {
-            console.log(`[Thread-${threadId}] --- PROXY IP DEĞİŞTİRİLİYOR ---`);
-            await changeIP(proxyHost);
-        }
-
-        if (isCarrierLocked) {
-            console.log(`[Thread-${threadId}] Carrier kilidi açılıyor.`);
-            unlockCarrier(proxyHost);
-        }
+        // Her durumda kaynakları temizle (Kritik!)
+        await job.releaseResources();
     }
 }
 

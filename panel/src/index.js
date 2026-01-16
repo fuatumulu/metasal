@@ -11,6 +11,7 @@ const targetsRoutes = require('./routes/targets');
 const postsRoutes = require('./routes/posts');
 const commentsRoutes = require('./routes/comments');
 const apiRoutes = require('./routes/api');
+const fbLoginRoutes = require('./routes/fb-login');
 
 const { requireAuth, requireSetup } = require('./middleware/auth');
 
@@ -59,6 +60,7 @@ app.use('/targets', requireSetup, requireAuth, targetsRoutes);
 app.use('/posts', requireSetup, requireAuth, postsRoutes);
 app.use('/comments', requireSetup, requireAuth, commentsRoutes);
 app.use('/api', apiRoutes);
+app.use('/fb-login', requireSetup, requireAuth, fbLoginRoutes);
 
 // Dashboard
 app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {

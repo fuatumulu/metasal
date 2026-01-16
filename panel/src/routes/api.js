@@ -416,5 +416,87 @@ router.get('/heartbeat', async (req, res) => {
     }
 });
 
-module.exports = router;
+// ==================== Facebook Login API Endpoints ====================
 
+// FB Login: Sonraki bekleyen hesabı al (Bot tarafından çağrılır)
+router.get('/fb-login/next-pending', async (req, res) => {
+    try {
+        const account = await prisma.facebookAccount.findFirst({
+            where: { status: 'pending' },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        if (!account) {
+            return res.json({ success: false, message: 'Bekleyen hesap yok' });
+        }
+
+        // İşleniyor olarak işaretle
+        await prisma.facebookAccount.update({
+            where: { id: account.id },
+            data: { status: 'processing' }
+        });
+
+        res.json({ success: true, account });
+    } catch (error) {
+        console.error('FB Login API hatası:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// FB Login: Hesap durumunu güncelle (Bot tarafından çağrılır)
+router.post('/fb-login/update-status', async (req, res) => {
+    try {
+        const { accountId, status, visionId, folderId, errorMessage } = req.body;
+
+        const updateData = { status };
+
+        if (visionId) updateData.visionId = visionId;
+        if (folderId) updateData.folderId = folderId;
+        if (errorMessage) updateData.errorMessage = errorMessage;
+
+        if (['cookie_failed', 'login_failed'].includes(status)) {
+            // Hata durumunda retry count artır
+            await prisma.facebookAccount.update({
+                where: { id: accountId },
+                data: {
+                    ...updateData,
+                    retryCount: { increment: 1 }
+                }
+            });
+        } else {
+            await prisma.facebookAccount.update({
+                where: { id: accountId },
+                data: updateData
+            });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('FB Login status güncelleme hatası:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// FB Login: İşlem durumu (Bot için polling)
+router.get('/fb-login/should-process', async (req, res) => {
+    try {
+        const pendingCount = await prisma.facebookAccount.count({
+            where: { status: 'pending' }
+        });
+
+        const processingCount = await prisma.facebookAccount.count({
+            where: { status: 'processing' }
+        });
+
+        res.json({
+            success: true,
+            shouldProcess: pendingCount > 0 && processingCount === 0,
+            pendingCount,
+            processingCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+module.exports = router;

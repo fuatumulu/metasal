@@ -184,8 +184,8 @@ async function changeIP(proxyHost) {
                 console.log(`[ProxyManager] ✓ IP değiştirildi: ${data.EXT_IP1} -> ${data.EXT_IP2}`);
                 console.log(`[ProxyManager] Yeni IP: ${data.ext_ip}, Süre: ${data.total_time}sn`);
                 success = true;
-                // Başarılı olunca lastChangeTime'ı güncelle (cooldown tam olarak şu andan itibaren)
-                state.lastChangeTime = Date.now();
+                // Başarılı olunca cooldown'u sıfırla (Çünkü IP zaten değişti ve hazır)
+                state.lastChangeTime = 0;
             } else {
                 // Failure - 60sn bekle ve tekrar dene
                 console.log(`[ProxyManager] ✗ Change başarısız: ${data.message}`);
