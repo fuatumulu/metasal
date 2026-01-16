@@ -27,35 +27,54 @@ function maskSensitiveData(data) {
 }
 
 /**
- * Tüm proxy'leri listele ve cache'le
+ * Tüm proxy'leri klasör bazlı listele ve cache'le
+ * Skill Dokümantasyonu: GET /folders/{folderId}/proxies
  */
 async function loadProxies() {
     try {
+        if (!VISION_API_TOKEN) return proxyCache;
+
         const headers = { 'X-Token': VISION_API_TOKEN };
-        const res = await axios.get(`${VISION_CLOUD_API}/proxies`, { headers });
-        const proxies = res.data.data || [];
+        const filterFolderId = process.env.VISION_FOLDER_ID;
 
         proxyCache.clear();
-        for (const proxy of proxies) {
-            // Proxy host:port formatını oluştur
-            const hostPort = proxy.host && proxy.port ? `${proxy.host}:${proxy.port}` : null;
-            proxyCache.set(proxy.id, {
-                id: proxy.id,
-                name: proxy.name,
-                type: proxy.type,
-                host: proxy.host,
-                port: proxy.port,
-                hostPort: hostPort
-            });
+
+        // 1. Klasör listesini al
+        let folderIds = [];
+        if (filterFolderId && filterFolderId !== 'your_folder_id_here') {
+            folderIds = [filterFolderId];
+        } else {
+            const foldersRes = await axios.get(`${VISION_CLOUD_API}/folders`, { headers });
+            folderIds = (foldersRes.data.data || []).map(f => f.id);
         }
 
-        console.log(`[Vision] ${proxyCache.size} proxy yüklendi`);
+        // 2. Her klasör için proxy'leri çek
+        for (const folderId of folderIds) {
+            try {
+                const res = await axios.get(`${VISION_CLOUD_API}/folders/${folderId}/proxies`, { headers });
+                const proxies = res.data.data || [];
+
+                for (const proxy of proxies) {
+                    const hostPort = proxy.host && proxy.port ? `${proxy.host}:${proxy.port}` : null;
+                    if (hostPort) {
+                        proxyCache.set(proxy.id, {
+                            id: proxy.id,
+                            name: proxy.name,
+                            host: proxy.host,
+                            port: proxy.port,
+                            hostPort: hostPort
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(`[Vision] Klasör ${folderId} proxy'leri alınamadı:`, err.message);
+            }
+        }
+
+        console.log(`[Vision] ${proxyCache.size} proxy yüklendi (Klasör bazlı)`);
         return proxyCache;
     } catch (error) {
         console.error('[Vision] Proxy listesi alma hatası:', error.message);
-        if (error.config) {
-            console.error('[Vision] Hata detayları (Maskelenmiş):', maskSensitiveData(error.config));
-        }
         return proxyCache;
     }
 }
