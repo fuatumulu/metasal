@@ -232,8 +232,15 @@ async function startProfile(folderId, profileId) {
                 console.log(`Deneme ${attempts}/${maxAttempts}: ${delay}ms bekleniyor...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
 
-                // Önce 127.0.0.1 dene, başarısız olursa localhost dene
-                const targetHost = attempts % 2 === 0 ? 'localhost' : '127.0.0.1';
+                // VISION_LOCAL_API'deki host bilgisini al (örn: 127.0.0.1 veya sunucu IP'si)
+                const visionUrl = new URL(VISION_LOCAL_API);
+                let targetHost = visionUrl.hostname;
+
+                // Eğer ilk deneme başarısız olursa, alternatif olarak localhost dene
+                if (attempts % 2 === 0 && targetHost === '127.0.0.1') {
+                    targetHost = 'localhost';
+                }
+
                 console.log(`Bağlanılıyor: http://${targetHost}:${port}...`);
 
                 browser = await puppeteer.connect({
