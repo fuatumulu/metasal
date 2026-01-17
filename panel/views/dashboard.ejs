@@ -29,6 +29,9 @@
             <li>
                 <a href="/comments">💬 Yorumlar</a>
             </li>
+            <li>
+                <a href="/fb-login">🔐 Facebook Login</a>
+            </li>
         </ul>
         <div class="sidebar-footer">
             <a href="/logout" class="logout-btn">🚪 Çıkış</a>
@@ -70,11 +73,15 @@
                     <span class="stat-label">Bekleyen Görev</span>
                 </div>
                 <% if (stats.pendingTasks> 0) { %>
-                    <form action="/dashboard/clear-pending-tasks" method="POST" style="margin-top: 0.5rem;"
-                        onsubmit="return confirm('Tüm bekleyen görevler silinecek, emin misiniz?')">
-                        <button type="submit" class="btn btn-danger btn-sm"
-                            style="font-size: 0.7rem; padding: 4px 8px;">🗑️ Temizle</button>
-                    </form>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-info btn-sm" onclick="showPendingTasksModal()"
+                            style="font-size: 0.7rem; padding: 4px 8px;">👁️ Görevleri Gör</button>
+                        <form action="/dashboard/clear-pending-tasks" method="POST" style="margin: 0;"
+                            onsubmit="return confirm('Tüm bekleyen görevler silinecek, emin misiniz?')">
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                style="font-size: 0.7rem; padding: 4px 8px;">🗑️ Temizle</button>
+                        </form>
+                    </div>
                     <% } %>
             </div>
 
@@ -154,8 +161,42 @@
                     </tbody>
                 </table>
             </div>
-        </div>
     </main>
+
+    <!-- Bekleyen Görevler Modal -->
+    <div id="pendingTasksModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📋 Bekleyen Görevler</h3>
+                <button type="button" class="modal-close" onclick="closePendingTasksModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="pendingTasksLoading" class="text-center" style="padding: 2rem;">
+                    <span class="loading-spinner"></span>
+                    <p>Yükleniyor...</p>
+                </div>
+                <div id="pendingTasksContent" style="display: none;">
+                    <div class="table-responsive">
+                        <table class="pending-tasks-table">
+                            <thead>
+                                <tr>
+                                    <th>Profil</th>
+                                    <th>Görev Tipi</th>
+                                    <th>Hedef/Açıklama</th>
+                                    <th>Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingTasksTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="pendingTasksEmpty" class="text-center" style="display: none; padding: 2rem;">
+                        <p>Bekleyen görev bulunmuyor.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <style>
         .log-table {
@@ -242,7 +283,283 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
             padding: 1rem;
         }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #eee;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+
+        .modal-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .pending-tasks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .pending-tasks-table th,
+        .pending-tasks-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .pending-tasks-table th {
+            background-color: #f8f9fa;
+            color: #555;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+
+        .pending-tasks-table tbody tr:hover {
+            background-color: #f8f9ff;
+        }
+
+        .task-profile {
+            font-weight: 500;
+            color: #667eea;
+        }
+
+        .task-type {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .task-type-like {
+            background: #fce4ec;
+            color: #c2185b;
+        }
+
+        .task-type-comment {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .task-type-share {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .task-type-target {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .task-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .task-status-pending {
+            background: #fff3cd;
+            color: #664d03;
+        }
+
+        .task-status-processing {
+            background: #cff4fc;
+            color: #055160;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+
+        .btn-info:hover {
+            opacity: 0.9;
+        }
+
+        .task-description {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #666;
+        }
     </style>
+
+    <script>
+        function showPendingTasksModal() {
+            const modal = document.getElementById('pendingTasksModal');
+            const loading = document.getElementById('pendingTasksLoading');
+            const content = document.getElementById('pendingTasksContent');
+            const tableBody = document.getElementById('pendingTasksTableBody');
+            const empty = document.getElementById('pendingTasksEmpty');
+
+            modal.style.display = 'flex';
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            fetch('/api/tasks/pending-list')
+                .then(res => res.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+
+                    if (!data.success || data.tasks.length === 0) {
+                        tableBody.innerHTML = '';
+                        empty.style.display = 'block';
+                        return;
+                    }
+
+                    empty.style.display = 'none';
+                    tableBody.innerHTML = data.tasks.map(task => {
+                        const typeClass = getTaskTypeClass(task.actionType);
+                        const statusClass = task.status === 'pending' ? 'task-status-pending' : 'task-status-processing';
+                        const statusText = task.status === 'pending' ? 'Bekliyor' : 'İşleniyor';
+
+                        return `
+                            <tr>
+                                <td class="task-profile">${escapeHtml(task.profileName)}</td>
+                                <td><span class="task-type ${typeClass}">${escapeHtml(task.actionType)}</span></td>
+                                <td class="task-description" title="${escapeHtml(task.taskDescription)}">${escapeHtml(task.taskDescription)}</td>
+                                <td><span class="task-status ${statusClass}">${statusText}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                })
+                .catch(err => {
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">Görevler yüklenirken hata oluştu.</td></tr>';
+                    console.error('Pending tasks error:', err);
+                });
+        }
+
+        function closePendingTasksModal() {
+            document.getElementById('pendingTasksModal').style.display = 'none';
+        }
+
+        function getTaskTypeClass(actionType) {
+            if (actionType.includes('Beğeni')) return 'task-type-like';
+            if (actionType.includes('Yorum')) return 'task-type-comment';
+            if (actionType.includes('Paylaşım')) return 'task-type-share';
+            if (actionType.includes('Hedef')) return 'task-type-target';
+            return '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Modal dışına tıklandığında kapat
+        document.getElementById('pendingTasksModal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closePendingTasksModal();
+            }
+        });
+
+        // ESC tuşuna basıldığında kapat
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closePendingTasksModal();
+            }
+        });
+    </script>
 </body>
 
 </html>

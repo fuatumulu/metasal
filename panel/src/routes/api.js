@@ -4,6 +4,60 @@ const { PrismaClient } = require('@prisma/client');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Bekleyen görevlerin listesini getir (Dashboard modal için)
+router.get('/tasks/pending-list', async (req, res) => {
+    try {
+        const tasks = await prisma.botTask.findMany({
+            where: { status: { in: ['pending', 'processing'] } },
+            include: {
+                profile: { select: { id: true, name: true, visionId: true } },
+                target: { select: { id: true, name: true, url: true, type: true } },
+                postTask: { select: { id: true, searchKeyword: true } }
+            },
+            orderBy: { createdAt: 'asc' },
+            take: 100 // Maksimum 100 görev göster
+        });
+
+        // Görevleri formatla
+        const formattedTasks = tasks.map(task => {
+            let taskDescription = '';
+            let actionType = '';
+
+            if (task.taskType === 'like_target') {
+                actionType = 'Hedef Beğeni';
+                const targetName = task.target?.name || task.target?.url || 'Bilinmeyen Hedef';
+                const targetType = task.target?.type === 'page' ? 'Sayfa' : 'Grup';
+                taskDescription = `${targetType}: ${targetName}`;
+            } else if (task.taskType === 'post_action') {
+                const action = task.result;
+                if (action === 'like') actionType = 'Gönderi Beğeni';
+                else if (action === 'comment') actionType = 'Gönderi Yorum';
+                else if (action === 'share') actionType = 'Gönderi Paylaşım';
+                else actionType = 'Gönderi İşlemi';
+
+                taskDescription = task.postTask?.searchKeyword
+                    ? `"${task.postTask.searchKeyword.substring(0, 50)}${task.postTask.searchKeyword.length > 50 ? '...' : ''}"`
+                    : 'Gönderi Görevi';
+            }
+
+            return {
+                id: task.id,
+                profileName: task.profile?.name || 'Profil Atanmadı',
+                profileId: task.profile?.id,
+                actionType,
+                taskDescription,
+                status: task.status,
+                createdAt: new Date(task.createdAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })
+            };
+        });
+
+        res.json({ success: true, tasks: formattedTasks, total: formattedTasks.length });
+    } catch (error) {
+        console.error('Get pending tasks list error:', error);
+        res.status(500).json({ success: false, error: 'Sunucu hatası' });
+    }
+});
+
 // Bekleyen görevleri al
 router.get('/tasks/pending', async (req, res) => {
     try {
