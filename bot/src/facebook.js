@@ -84,21 +84,61 @@ async function login(page, username, password, cookie = null) {
         await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
         await sleep(2000);
 
-        // Cookie popup varsa kapat
+        // Cookie popup varsa kapat (TR/EN)
         try {
-            const cookieBtn = await page.$('[data-cookiebanner="accept_button"]');
-            if (cookieBtn) {
-                await cookieBtn.click();
-                await sleep(1000);
-            }
+            await page.evaluate(() => {
+                const acceptTexts = ['tümünü kabul et', 'accept all', 'allow all', 'kabul et', 'accept'];
+                const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+                for (const btn of buttons) {
+                    const text = btn.textContent?.toLowerCase().trim();
+                    if (acceptTexts.some(t => text?.includes(t))) {
+                        btn.click();
+                        break;
+                    }
+                }
+            });
+            await sleep(1000);
         } catch (e) { }
 
-        // Login form
-        await page.type('#email', username, { delay: 100 });
-        await page.type('#pass', password, { delay: 100 });
+        // Email/Username alanını bul ve yaz
+        // Selector alternatifleri: #email (ID), input[name="email"], data-testid
+        const emailSelector = '#email, input[name="email"], input[data-testid="royal-email"]';
+        await page.waitForSelector(emailSelector, { timeout: 10000 });
+        await page.type(emailSelector, username, { delay: 100 });
+
+        // Password alanını bul ve yaz
+        const passSelector = '#pass, input[name="pass"], input[data-testid="royal-pass"]';
+        await page.waitForSelector(passSelector, { timeout: 5000 });
+        await page.type(passSelector, password, { delay: 100 });
         await sleep(500);
 
-        await page.click('[name="login"]');
+        // Login butonuna tıkla
+        // Selector alternatifleri: name="login", data-testid, veya metin bazlı
+        const loginClicked = await page.evaluate(() => {
+            // Önce name veya data-testid ile dene
+            const loginBtn = document.querySelector('button[name="login"], button[data-testid="royal-login-button"]');
+            if (loginBtn) {
+                loginBtn.click();
+                return true;
+            }
+            // Metin bazlı arama (TR/EN)
+            const loginTexts = ['giriş yap', 'log in', 'login', 'sign in'];
+            const buttons = Array.from(document.querySelectorAll('button[type="submit"], button'));
+            for (const btn of buttons) {
+                const text = btn.textContent?.toLowerCase().trim();
+                if (loginTexts.some(t => text?.includes(t))) {
+                    btn.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (!loginClicked) {
+            // Fallback: eski yöntem
+            await page.click('[name="login"]');
+        }
+
         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
         await sleep(3000);
 
@@ -117,6 +157,7 @@ async function login(page, username, password, cookie = null) {
     }
 }
 
+
 /**
  * Facebook popuplarını (bildirimler, çerezler vb.) kapatmaya çalış
  */
@@ -126,15 +167,18 @@ async function handlePopups(page) {
             const popupButtons = [
                 'not now', 'şimdi değil', 'close', 'kapat',
                 'accept all', 'tümünü kabul et', 'allow', 'izin ver',
-                'decline', 'reddet'
+                'decline', 'reddet',
+                'block', 'engelle', 'dismiss', 'reddet',
+                'skip', 'geç', 'maybe later', 'belki sonra'
             ];
 
             // Tüm butonları ve tıklanabilir metinleri tara
-            const buttons = Array.from(document.querySelectorAll('div[role="button"], span, b, button'));
+            const buttons = Array.from(document.querySelectorAll('div[role="button"], span, b, button, a[role="button"]'));
             for (const btn of buttons) {
                 const text = btn.textContent.trim().toLowerCase();
-                if (popupButtons.includes(text)) {
-                    btn.click();
+                // Tam eşleşme veya içeriyorsa (daha agresif kapatma)
+                if (popupButtons.some(p => text === p || (text.length < 20 && text.includes(p)))) {
+                    try { btn.click(); } catch (e) { }
                 }
             }
         });
@@ -947,5 +991,6 @@ module.exports = {
     commentPost,
     sharePost,
     simulateHumanBrowsing,
-    ensureMaximized
+    ensureMaximized,
+    handlePopups
 };

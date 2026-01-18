@@ -31,7 +31,21 @@ async function importCookies(folderId, profileId, cookieBase64) {
 
         // Base64'ten decode et
         const cookieJson = Buffer.from(cookieBase64, 'base64').toString('utf-8');
-        const cookies = JSON.parse(cookieJson);
+        const rawCookies = JSON.parse(cookieJson);
+
+        // Cookie formatını Vision API'ye uygun hale getir
+        // Vision API: { name, value, path, domain, expires (saniye) }
+        // Gelen format: { name, value, path, domain, expirationDate (milisaniye), httpOnly, secure }
+        const cookies = rawCookies.map(cookie => ({
+            name: cookie.name,
+            value: cookie.value,
+            path: cookie.path || '/',
+            domain: cookie.domain || '.facebook.com',
+            // expirationDate milisaniye, expires saniye olmalı
+            expires: cookie.expirationDate
+                ? Math.floor(cookie.expirationDate / 1000)
+                : (cookie.expires || Math.floor(Date.now() / 1000) + 86400 * 365)
+        }));
 
         // Cookie import
         await axios.post(
@@ -47,6 +61,7 @@ async function importCookies(folderId, profileId, cookieBase64) {
         return false;
     }
 }
+
 
 /**
  * Profile cookie'lerini export et

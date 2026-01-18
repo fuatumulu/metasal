@@ -1,111 +1,213 @@
 /**
  * Operator UI - Operatör müdahalesi bekleme arayüzü
- * SRP: Sadece operatör etkileşimi
+ * SRP: Sadece operatör etkileşimi (UI)
  * 
  * Değişim nedeni: Operatör UI gereksinimleri değişirse
  */
 
 const { sendLog } = require('../api');
 
-/**
- * Operatör müdahalesi bekle - Ekranda bildirim göster
- * @param {object} page - Puppeteer page
- * @param {string} message - Operatöre gösterilecek mesaj
- * @param {number} timeout - Maksimum bekleme süresi (ms)
- * @returns {boolean} - Operatör tamamlandı mı
- */
-async function waitForOperator(page, message, timeout = 300000) {
-    console.log(`[FBLogin:Operator] ⏳ OPERATÖR BEKLENİYOR: ${message}`);
-    await sendLog('warning', 'OPERATOR_WAIT', `⏳ OPERATÖR BEKLENİYOR: ${message}`);
+const UI_STYLES = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    max-width: 320px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    z-index: 999999;
+    font-family: system-ui, -apple-system, sans-serif;
+    border: 1px solid #e2e8f0;
+    animation: slideIn 0.5s ease-out;
+`;
 
-    // Sayfaya bildirim overlay'i ekle
-    await page.evaluate((msg) => {
-        // Mevcut overlay'i kaldır (varsa)
-        const existingOverlay = document.getElementById('operator-overlay');
-        if (existingOverlay) existingOverlay.remove();
+const ANIMATION_STYLE = `
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+`;
+
+/**
+ * Operatörden durum onayı iste (Başarılı / Hatalı)
+ * @param {object} page 
+ * @returns {Promise<string>} 'success' | 'failed'
+ */
+async function askForStatus(page) {
+    console.log(`[FBLogin:Operator] ⏳ Operatör kararı bekleniyor (Başarılı/Hatalı)...`);
+
+    await page.evaluate((styles, animParams) => {
+        // Varsa temizle
+        const old = document.getElementById('operator-overlay');
+        if (old) old.remove();
+
+        const style = document.createElement('style');
+        style.textContent = animParams;
+        document.head.appendChild(style);
 
         const overlay = document.createElement('div');
         overlay.id = 'operator-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 99999;
-            flex-direction: column;
-        `;
+        overlay.style.cssText = styles;
+
         overlay.innerHTML = `
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 50px; border-radius: 20px; text-align: center; max-width: 550px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
-                <div style="font-size: 64px; margin-bottom: 25px;">⏳</div>
-                <h2 style="margin-bottom: 20px; color: white; font-size: 28px; font-weight: 600;">Operatör Bekleniyor</h2>
-                <p style="color: rgba(255,255,255,0.9); margin-bottom: 30px; font-size: 18px; line-height: 1.6;">${msg}</p>
-                <p style="color: rgba(255,255,255,0.7); font-size: 14px; margin-bottom: 25px;">Gerekli işlemi yaptıktan sonra butona tıklayın</p>
-                <button id="operator-done-btn" style="
-                    padding: 18px 50px;
-                    font-size: 18px;
+            <h3 style="margin: 0 0 15px 0; color: #1a202c; font-size: 18px; font-weight: 600;">Hesap Durumu Nedir?</h3>
+            <p style="color: #4a5568; margin-bottom: 20px; font-size: 14px;">Lütfen kontrol edip karar verin.</p>
+            
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="btn-failed" style="
+                    flex: 1;
+                    padding: 12px;
+                    font-size: 14px;
                     font-weight: 600;
-                    background: white;
-                    color: #667eea;
+                    background: #fc8181;
+                    color: white;
                     border: none;
-                    border-radius: 12px;
+                    border-radius: 8px;
                     cursor: pointer;
-                    transition: transform 0.2s, box-shadow 0.2s;
-                    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-                " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">✅ Tamamlandı</button>
+                    transition: all 0.2s;
+                ">❌ HATALI</button>
+                
+                <button id="btn-success" style="
+                    flex: 1;
+                    padding: 12px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    background: #48bb78;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                ">✅ BAŞARILI</button>
             </div>
         `;
         document.body.appendChild(overlay);
 
-        // Buton tıklama event'i
-        document.getElementById('operator-done-btn').onclick = function () {
-            overlay.remove();
-            window.__operatorDone = true;
-        };
-    }, message);
+        window.__operatorDecision = null;
 
-    // Operatör tamamlamasını bekle
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeout) {
-        try {
-            const done = await page.evaluate(() => window.__operatorDone === true);
-            if (done) {
-                console.log('[FBLogin:Operator] ✅ Operatör işlemi tamamladı');
-                await page.evaluate(() => { window.__operatorDone = false; });
-                return true;
-            }
-        } catch (e) {
-            // Sayfa değişmiş olabilir, overlay kaybolmuştur
-            console.log('[FBLogin:Operator] Sayfa değişti, operatör işlemi tamamlanmış sayılıyor');
-            return true;
+        document.getElementById('btn-failed').onclick = () => {
+            window.__operatorDecision = 'failed';
+            overlay.innerHTML = '<p style="color: #c53030; font-weight: 600;">❌ İŞARETLENDİ: HATALI</p>';
+        };
+
+        document.getElementById('btn-success').onclick = () => {
+            window.__operatorDecision = 'success';
+            overlay.innerHTML = '<p style="color: #2f855a; font-weight: 600;">✅ İŞARETLENDİ: BAŞARILI</p>';
+        };
+
+    }, UI_STYLES, ANIMATION_STYLE);
+
+    // Kararı bekle
+    while (true) {
+        const decision = await page.evaluate(() => window.__operatorDecision);
+        if (decision) {
+            await new Promise(r => setTimeout(r, 1000)); // Görsel geri bildirim için kısa bekleme
+            return decision;
         }
         await new Promise(r => setTimeout(r, 500));
     }
+}
 
-    console.log('[FBLogin:Operator] ⚠️ Timeout, operatör beklemesi sona erdi');
-    return false;
+/**
+ * Operatörün "Hazır" demesini bekle (Dil değişimi vs. için)
+ * Sayfa yenilense bile overlay'i tekrar inject eder.
+ * @param {object} page
+ * @param {string} taskDescription
+ */
+async function waitForReady(page, taskDescription) {
+    console.log(`[FBLogin:Operator] ⏳ Operatör bekleniyor: ${taskDescription}`);
+
+    // Injector fonksiyonu
+    const injectOverlay = async () => {
+        try {
+            await page.evaluate((msg, styles, animParams) => {
+                if (document.getElementById('operator-overlay')) return;
+
+                const style = document.createElement('style');
+                style.textContent = animParams;
+                document.head.appendChild(style);
+
+                const overlay = document.createElement('div');
+                overlay.id = 'operator-overlay';
+                overlay.style.cssText = styles;
+
+                overlay.innerHTML = `
+                    <div style="font-size: 24px; margin-bottom: 10px;">🌐</div>
+                    <h3 style="margin: 0 0 10px 0; color: #1a202c; font-size: 16px; font-weight: 600;">Müdahale Bekleniyor</h3>
+                    <p style="color: #4a5568; margin-bottom: 15px; font-size: 13px; line-height: 1.4;">${msg}</p>
+                    <button id="btn-ready" style="
+                        width: 100%;
+                        padding: 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        background: #4299e1;
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    ">hazır (DEVAM ET)</button>
+                `;
+                document.body.appendChild(overlay);
+
+                // Global değişkeni koru/oluştur
+                if (window.__operatorReady === undefined) {
+                    window.__operatorReady = false;
+                }
+
+                document.getElementById('btn-ready').onclick = () => {
+                    window.__operatorReady = true;
+                    overlay.innerHTML = '<p style="color: #3182ce; font-weight: 600;">🔄 İşlem Devam Ediyor...</p>';
+                };
+            }, taskDescription, UI_STYLES, ANIMATION_STYLE);
+        } catch (e) {
+            // Sayfa o an yükleniyor olabilir, yutalım
+        }
+    };
+
+    // İlk injection
+    await injectOverlay();
+
+    // Polling döngüsü
+    while (true) {
+        try {
+            // 1. Durumu kontrol et
+            const ready = await page.evaluate(() => window.__operatorReady);
+            if (ready) {
+                await new Promise(r => setTimeout(r, 1000));
+                return true;
+            }
+
+            // 2. Overlay yerinde mi? Değilse (sayfa yenilendi vs) tekrar ekle
+            const hasOverlay = await page.evaluate(() => !!document.getElementById('operator-overlay'));
+            if (!hasOverlay) {
+                await injectOverlay();
+            }
+
+        } catch (e) {
+            // Context kaybolmuş olabilir (sayfa değişiyor), bekle ve devam et
+        }
+
+        await new Promise(r => setTimeout(r, 1000)); // 1 saniyede bir kontrol (performans dostu)
+    }
 }
 
 /**
  * Overlay'i temizle
- * @param {object} page - Puppeteer page
  */
 async function clearOverlay(page) {
     try {
         await page.evaluate(() => {
-            const overlay = document.getElementById('operator-overlay');
-            if (overlay) overlay.remove();
+            const el = document.getElementById('operator-overlay');
+            if (el) el.remove();
         });
-    } catch (e) {
-        // Sayfa değişmiş olabilir
-    }
+    } catch (e) { }
 }
 
 module.exports = {
-    waitForOperator,
+    askForStatus,
+    waitForReady,
     clearOverlay
 };

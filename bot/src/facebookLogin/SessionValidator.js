@@ -5,7 +5,7 @@
  * Değişim nedeni: Facebook login sayfası yapısı değişirse
  */
 
-const { sleep } = require('../facebook');
+const { sleep, handlePopups } = require('../facebook');
 
 /**
  * Facebook session'ın geçerli olup olmadığını kontrol et
@@ -15,7 +15,17 @@ const { sleep } = require('../facebook');
 async function verifySession(page) {
     try {
         await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 30000 });
-        await sleep(3000);
+
+        // Sayfayı yenile ve bekle (taskHandler.js mantığı)
+        try {
+            await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        } catch (e) {
+            console.log('[FBLogin:Session] Sayfa yenileme uyarısı atlandı.');
+        }
+
+        // Popup temizliği yap ve 10sn bekle
+        await handlePopups(page);
+        await sleep(10000);
 
         const url = page.url();
 
@@ -29,10 +39,19 @@ async function verifySession(page) {
             return { valid: false, reason: 'checkpoint' };
         }
 
-        // Feed görünüyor mu kontrol et
-        const feedExists = await page.$('[role="feed"]');
-        if (!feedExists) {
-            return { valid: false, reason: 'no_feed' };
+        // Doğrulama: Aria-label kontrolü (Daha güvenilir)
+        const hasSession = await page.evaluate(() => {
+            const labels = ['bildirimler', 'notifications', 'messenger', 'mesajlar', 'ana sayfa', 'home'];
+            return Array.from(document.querySelectorAll('[aria-label]'))
+                .some(el => labels.includes(el.getAttribute('aria-label').toLowerCase()));
+        });
+
+        if (!hasSession) {
+            // Yedek kontrol: role="feed"
+            const feedExists = await page.$('[role="feed"]');
+            if (!feedExists) {
+                return { valid: false, reason: 'no_feed' };
+            }
         }
 
         return { valid: true, reason: 'success' };

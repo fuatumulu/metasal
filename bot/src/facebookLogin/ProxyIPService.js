@@ -7,7 +7,8 @@
  * Not: Ana bot'un proxyManager.js modülünü kullanır
  */
 
-const { loadProxyConfig, getChangeUrl, changeIP } = require('../proxyManager');
+const axios = require('axios');
+const { loadProxyConfig, getChangeUrlByHost } = require('../proxyManager');
 
 // Proxy config cache
 let configLoaded = false;
@@ -24,52 +25,47 @@ function initialize() {
 
 /**
  * Verilen proxy IP'si için IP değiştir
- * @param {string} proxyIP - Proxy IP adresi (host veya host:port)
+ * @param {string} proxyIP - Proxy IP adresi (sadece HOST, port olmadan)
  * @returns {boolean} - Başarılı mı
  */
 async function changeProxyIP(proxyIP) {
     initialize();
 
-    // host:port formatına çevir (port yoksa ekle)
-    let proxyHost = proxyIP;
-    if (!proxyHost.includes(':')) {
-        // Varsayılan port ekle (genellikle mobil proxy'ler için)
-        proxyHost = `${proxyIP}:80`;
+    // IP|HOST ayrımı
+    let hostOnly;
+    if (proxyIP.includes('|')) {
+        // Eğer | varsa, sağ taraf (HOST) change işlemi için kullanılır
+        hostOnly = proxyIP.split('|')[1];
+    } else {
+        // Yoksa sol taraf (IP) portsuz olarak kullanılır
+        hostOnly = proxyIP.split(':')[0];
     }
 
-    // Change URL var mı kontrol et
-    const changeUrl = getChangeUrl(proxyHost);
+    // Change URL bul (manuel host veya IP ile)
+    const changeUrl = getChangeUrlByHost(hostOnly);
 
     if (!changeUrl) {
-        // Port olmadan dene
-        const hostOnly = proxyIP.split(':')[0];
-        // Tüm port kombinasyonlarını dene
-        const ports = ['80', '8080', '3128', ''];
-
-        for (const port of ports) {
-            const tryHost = port ? `${hostOnly}:${port}` : hostOnly;
-            const tryUrl = getChangeUrl(tryHost);
-            if (tryUrl) {
-                proxyHost = tryHost;
-                break;
-            }
-        }
-    }
-
-    const finalChangeUrl = getChangeUrl(proxyHost);
-    if (!finalChangeUrl) {
-        console.log(`[FBLogin:ProxyIP] ${proxyIP} için change URL bulunamadı, IP değişimi atlanıyor`);
+        console.log(`[FBLogin:ProxyIP] ${hostOnly} için change URL bulunamadı, IP değişimi atlanıyor`);
         return true; // Config yoksa başarılı kabul et (sabit IP proxy olabilir)
     }
 
-    console.log(`[FBLogin:ProxyIP] IP değiştiriliyor: ${proxyHost}`);
+    console.log(`[FBLogin:ProxyIP] IP değiştiriliyor: ${hostOnly}`);
+    console.log(`[FBLogin:ProxyIP] Change URL: ${changeUrl}`);
 
     try {
-        const success = await changeIP(proxyHost);
-        if (success) {
-            console.log(`[FBLogin:ProxyIP] ✅ IP başarıyla değiştirildi: ${proxyHost}`);
+        const response = await axios.get(changeUrl, { timeout: 60000 });
+
+        const data = response.data;
+        console.log(`[FBLogin:ProxyIP] Yanıt:`, JSON.stringify(data));
+
+        if (data.result === 'success') {
+            console.log(`[FBLogin:ProxyIP] ✅ IP başarıyla değiştirildi`);
+            console.log(`[FBLogin:ProxyIP] Eski: ${data.EXT_IP1} -> Yeni: ${data.EXT_IP2 || data.ext_ip}`);
+            return true;
+        } else {
+            console.log(`[FBLogin:ProxyIP] ⚠️ IP değişimi yanıtı: ${data.message || JSON.stringify(data)}`);
+            return true; // Yine de devam et
         }
-        return success;
     } catch (error) {
         console.error(`[FBLogin:ProxyIP] IP değiştirme hatası: ${error.message}`);
         return false;

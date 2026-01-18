@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Sorunlu hesaplar (cookie_failed, login_failed, needs_verify)
+        // Sorunlu hesaplar (cookie_failed, login_failed, needs_verify) - yeniden denenebilir
         const failedAccounts = await prisma.facebookAccount.findMany({
             where: {
                 status: { in: ['cookie_failed', 'login_failed', 'needs_verify'] }
@@ -22,8 +22,16 @@ router.get('/', async (req, res) => {
             orderBy: { updatedAt: 'desc' }
         });
 
+        // Checkpoint hesaplar - yeniden denenemez
+        const checkpointAccounts = await prisma.facebookAccount.findMany({
+            where: {
+                status: 'checkpoint'
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+
         // Durum istatistikleri
-        const allAccounts = [...normalAccounts, ...failedAccounts];
+        const allAccounts = [...normalAccounts, ...failedAccounts, ...checkpointAccounts];
         const stats = {
             pending: allAccounts.filter(a => a.status === 'pending').length,
             processing: allAccounts.filter(a => a.status === 'processing').length,
@@ -31,10 +39,11 @@ router.get('/', async (req, res) => {
             cookieFailed: failedAccounts.filter(a => a.status === 'cookie_failed').length,
             loginFailed: failedAccounts.filter(a => a.status === 'login_failed').length,
             needsVerify: failedAccounts.filter(a => a.status === 'needs_verify').length,
+            checkpoint: checkpointAccounts.length,
             totalFailed: failedAccounts.length
         };
 
-        res.render('fb-login', { accounts: normalAccounts, failedAccounts, stats });
+        res.render('fb-login', { accounts: normalAccounts, failedAccounts, checkpointAccounts, stats });
     } catch (error) {
         console.error('FB Login sayfası hatası:', error);
         res.status(500).send('Sunucu hatası');
@@ -44,7 +53,7 @@ router.get('/', async (req, res) => {
 // Toplu hesap ekleme
 router.post('/bulk-add', async (req, res) => {
     try {
-        const { accountsText } = req.body;
+        const { accountsText, defaultProxyHost } = req.body;
 
         if (!accountsText || !accountsText.trim()) {
             return res.redirect('/fb-login?error=empty');
@@ -63,9 +72,15 @@ router.post('/bulk-add', async (req, res) => {
                 continue;
             }
 
-            const [username, password, cookie, proxyIP] = parts;
+            const [username, password, cookie, ipPart] = parts;
+            // Eğer ipPart içinde zaten | varsa onu kullan, yoksa ve defaultProxyHost varsa onu ekle
+            let finalProxyIP = ipPart.trim();
 
-            if (!username || !password || !proxyIP) {
+            if (defaultProxyHost && defaultProxyHost.trim() && !finalProxyIP.includes('|')) {
+                finalProxyIP = `${finalProxyIP}|${defaultProxyHost.trim()}`;
+            }
+
+            if (!username || !password || !finalProxyIP) {
                 errors.push(`Eksik bilgi: ${username || 'kullanıcı yok'}`);
                 continue;
             }
@@ -85,7 +100,7 @@ router.post('/bulk-add', async (req, res) => {
                     username: username.trim(),
                     password: password.trim(),
                     cookie: cookie && cookie.trim() ? cookie.trim() : null,
-                    proxyIP: proxyIP.trim(),
+                    proxyIP: finalProxyIP,
                     status: 'pending'
                 }
             });

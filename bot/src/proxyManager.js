@@ -54,10 +54,31 @@ function getDefaultProxyHost() {
 }
 
 /**
- * Proxy host için change URL getir
+ * Proxy host için change URL getir (tam eşleşme - ana bot için)
  */
 function getChangeUrl(proxyHost) {
     return proxyConfig.get(proxyHost) || null;
+}
+
+/**
+ * Sadece HOST IP'si ile change URL getir (Facebook Login için)
+ * ENV'de HOST:PORT formatında kayıtlı ama sadece HOST ile arar
+ */
+function getChangeUrlByHost(hostIP) {
+    // Önce direkt eşleşme dene
+    if (proxyConfig.has(hostIP)) {
+        return proxyConfig.get(hostIP);
+    }
+
+    // HOST:PORT formatındaki key'lerde HOST'u ara
+    for (const [key, url] of proxyConfig) {
+        const keyHost = key.split(':')[0];
+        if (keyHost === hostIP) {
+            return url;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -233,6 +254,7 @@ function sleep(ms) {
 module.exports = {
     loadProxyConfig,
     getChangeUrl,
+    getChangeUrlByHost,
     getDefaultProxyHost,
     isCarrierAvailable,
     tryLockCarrier,

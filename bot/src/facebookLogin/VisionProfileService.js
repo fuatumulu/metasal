@@ -42,7 +42,10 @@ async function loadProxies() {
  * IP adresine göre proxy bul
  */
 function findProxyByIP(ip) {
-    return proxyCache.find(p => p.host === ip || p.host?.includes(ip)) || null;
+    // IP|HOST formatı desteği (HOST kısmı proxy manager için)
+    const cleanIP = ip.split('|')[0];
+    // Vision API: proxy_ip alanını kullanıyor
+    return proxyCache.find(p => p.proxy_ip === cleanIP || p.proxy_ip?.includes(cleanIP)) || null;
 }
 
 /**
@@ -52,12 +55,39 @@ async function getLatestFingerprint(platform = 'windows') {
     try {
         const headers = { 'X-Token': VISION_API_TOKEN };
         const res = await axios.get(`${VISION_CLOUD_API}/fingerprints/${platform}/latest`, { headers });
-        return res.data.data || res.data;
+
+        // Vision API response: { data: { fingerprint: {...} } } veya { data: {...} }
+        const data = res.data.data || res.data;
+
+        // Eğer fingerprint iç içe geldiyse düzelt
+        let fingerprint = data;
+        if (data.fingerprint && data.fingerprint.major) {
+            fingerprint = data.fingerprint;
+        }
+
+        // Vision API zorunlu alanları ekle (eksikse varsayılan değerler)
+        // Dokümantasyon: webrtc_pref, webgl_pref, canvas_pref, ports_protection zorunlu
+        if (!fingerprint.webrtc_pref) {
+            fingerprint.webrtc_pref = 'auto';
+        }
+        if (!fingerprint.webgl_pref) {
+            fingerprint.webgl_pref = 'real';
+        }
+        if (!fingerprint.canvas_pref) {
+            fingerprint.canvas_pref = 'real';
+        }
+        if (!fingerprint.ports_protection) {
+            fingerprint.ports_protection = [];
+        }
+
+        return fingerprint;
     } catch (error) {
         console.error('[FBLogin:VisionProfile] Fingerprint alma hatası:', error.message);
         return null;
     }
 }
+
+
 
 /**
  * Yeni Vision profili oluştur
@@ -90,33 +120,44 @@ async function createProfile(account) {
         `Oluşturulma: ${new Date().toISOString()}`
     ].join('\n');
 
-    // Profil verileri
+    // Profil verileri - Vision API dokümantasyonuna uygun (TÜM alanlar)
     const profileData = {
         profile_name: `FB_${account.username.split('@')[0]}_${Date.now()}`,
-        platform: 'windows',
-        browser: 'chromium',
+        platform: 'Windows',
+        browser: 'Chrome',
         fingerprint: fingerprint,
         proxy_id: proxy.id,
-        profile_notes: notesContent
+        profile_notes: notesContent,
+        profile_tags: [],
+        new_profile_tags: [],
+        profile_status: null
     };
 
     console.log(`[FBLogin:VisionProfile] Profil oluşturuluyor: ${profileData.profile_name}`);
 
-    const res = await axios.post(
-        `${VISION_CLOUD_API}/folders/${VISION_FOLDER_ID}/profiles`,
-        profileData,
-        { headers }
-    );
+    try {
+        const res = await axios.post(
+            `${VISION_CLOUD_API}/folders/${VISION_FOLDER_ID}/profiles`,
+            profileData,
+            { headers }
+        );
 
-    const profile = res.data.data || res.data;
-    console.log(`[FBLogin:VisionProfile] Profil oluşturuldu: ${profile.id}`);
+        const profile = res.data.data || res.data;
+        console.log(`[FBLogin:VisionProfile] Profil oluşturuldu: ${profile.id}`);
 
-    return {
-        id: profile.id,
-        folderId: VISION_FOLDER_ID,
-        name: profileData.profile_name
-    };
+        return {
+            id: profile.id,
+            folderId: VISION_FOLDER_ID,
+            name: profileData.profile_name
+        };
+    } catch (error) {
+        console.error('[FBLogin:VisionProfile] Profil oluşturma hatası:', error.response?.status);
+        console.error('[FBLogin:VisionProfile] Hata detayı:', JSON.stringify(error.response?.data, null, 2));
+        console.error('[FBLogin:VisionProfile] Gönderilen veri:', JSON.stringify(profileData, null, 2));
+        throw error;
+    }
 }
+
 
 /**
  * Profili başlat ve port bilgisini döndür
@@ -134,7 +175,8 @@ async function startProfile(folderId, profileId) {
         console.log(`[FBLogin:VisionProfile] Profil başlatıldı, port: ${port}`);
         return port;
     } catch (error) {
-        console.error('[FBLogin:VisionProfile] Profil başlatma hatası:', error.message);
+        console.error('[FBLogin:VisionProfile] Profil başlatma hatası:', error.response?.status, error.message);
+        console.error('[FBLogin:VisionProfile] Hata detayı:', JSON.stringify(error.response?.data, null, 2));
         return null;
     }
 }
@@ -160,11 +202,56 @@ function isProxyCacheLoaded() {
     return proxyCache.length > 0;
 }
 
+/**
+ * Profil notlarını güncelle
+ * @param {string} profileId
+ * @param {string} folderId
+ * @param {string} newNotes
+ */
+async function updateProfileNotes(profileId, folderId, newNotes) {
+    try {
+        const headers = {
+            'X-Token': VISION_API_TOKEN,
+            'Content-Type': 'application/json'
+        };
+
+        // Vision API: PATCH /api/v1/folders/:folderId/profiles/:profileId
+        // Body: { profile_notes: '...' }
+        await axios.patch(
+            `${VISION_CLOUD_API}/folders/${folderId}/profiles/${profileId}`,
+            { profile_notes: newNotes },
+            { headers }
+        );
+
+        console.log(`[FBLogin:VisionProfile] Profil notları güncellendi: ${profileId}`);
+    } catch (error) {
+        console.error('[FBLogin:VisionProfile] Not güncelleme hatası:', error.message);
+    }
+}
+
+/**
+ * Profili sil
+ * @param {string} folderId 
+ * @param {string} profileId 
+ */
+async function deleteProfile(folderId, profileId) {
+    try {
+        const headers = { 'X-Token': VISION_API_TOKEN };
+        // Vision API: DELETE /api/v1/folders/:folderId/profiles/:profileId
+        await axios.delete(`${VISION_CLOUD_API}/folders/${folderId}/profiles/${profileId}`, { headers });
+        console.log(`[FBLogin:VisionProfile] Profil silindi: ${profileId}`);
+    } catch (error) {
+        console.error('[FBLogin:VisionProfile] Profil silme hatası:', error.message);
+    }
+}
+
 module.exports = {
     loadProxies,
     findProxyByIP,
     createProfile,
     startProfile,
     stopProfile,
-    isProxyCacheLoaded
+    isProxyCacheLoaded,
+    updateProfileNotes,
+    deleteProfile
 };

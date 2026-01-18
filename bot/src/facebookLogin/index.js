@@ -5,19 +5,20 @@
  * Değişim nedeni: İş akışı sırası veya mantığı değişirse
  * 
  * Bu modül hiçbir teknik detay içermez, sadece adımları koordine eder.
+ * Yeni Akış: Init -> Bekle -> Operatör Kararı -> (Hatalı -> Sil) veya (Başarılı -> Dil/Şifre Değişimi -> Kaydet)
  */
 
 const puppeteer = require('puppeteer-core');
-const { sleep, login } = require('../facebook');
+const { sleep, handlePopups } = require('../facebook');
 const { sendLog } = require('../api');
 
 // SRP-uyumlu servisler
 const PanelAPI = require('./PanelAPI');
 const VisionProfileService = require('./VisionProfileService');
 const CookieService = require('./CookieService');
-const SessionValidator = require('./SessionValidator');
 const OperatorUI = require('./OperatorUI');
 const ProxyIPService = require('./ProxyIPService');
+const PasswordChangeService = require('./PasswordChangeService');
 
 /**
  * Facebook Login Job Orchestrator
@@ -32,63 +33,36 @@ class FacebookLoginJob {
         this.page = null;
     }
 
-    /**
-     * Tag: Loglama için prefix
-     */
     get tag() {
         return `[Thread-${this.threadId}:FBLogin]`;
     }
 
     /**
-     * Adım 1: Vision profili oluştur
+     * ADIM 1: Başlangıç (Proxy, Profil, Browser)
      */
-    async createVisionProfile() {
-        console.log(`${this.tag} Adım 1: Vision profili oluşturuluyor...`);
+    async initializeStack() {
+        console.log(`${this.tag} Adım 1: Kaynaklar hazırlanıyor...`);
 
+        // Proxy değiştir
+        await ProxyIPService.changeProxyIP(this.account.proxyIP);
+
+        // Profil oluştur
         this.profile = await VisionProfileService.createProfile(this.account);
-
-        // Panel'e bildir
         await PanelAPI.updateAccountStatus(this.account.id, 'processing', {
             visionId: this.profile.id,
             folderId: this.profile.folderId
         });
 
-        return this.profile;
-    }
-
-    /**
-     * Adım 2: Cookie import et (varsa)
-     */
-    async importCookies() {
-        if (!this.account.cookie) {
-            console.log(`${this.tag} Adım 2: Cookie yok, atlanıyor`);
-            return false;
+        // Cookie import (varsa) - Şifre modunda bile varsa import edelim, zararı olmaz
+        if (this.account.cookie) {
+            await CookieService.importCookies(this.profile.folderId, this.profile.id, this.account.cookie);
         }
 
-        console.log(`${this.tag} Adım 2: Cookie import ediliyor...`);
-        return await CookieService.importCookies(
-            this.profile.folderId,
-            this.profile.id,
-            this.account.cookie
-        );
-    }
+        // Browser başlat
+        const port = await VisionProfileService.startProfile(this.profile.folderId, this.profile.id);
+        if (!port) throw new Error('Vision profili başlatılamadı');
 
-    /**
-     * Adım 3: Tarayıcıyı başlat
-     */
-    async startBrowser() {
-        console.log(`${this.tag} Adım 3: Tarayıcı başlatılıyor...`);
-
-        const port = await VisionProfileService.startProfile(
-            this.profile.folderId,
-            this.profile.id
-        );
-
-        if (!port) {
-            throw new Error('Vision profili başlatılamadı');
-        }
-
-        // Bağlantı için bekle ve dene
+        // Puppeteer connect - Retry mekanizmalı
         for (let i = 0; i < 5; i++) {
             await sleep(2000 + (i * 1000));
             try {
@@ -96,182 +70,147 @@ class FacebookLoginJob {
                     browserURL: `http://127.0.0.1:${port}`,
                     defaultViewport: null
                 });
-                console.log(`${this.tag} Tarayıcı bağlantısı başarılı`);
                 break;
             } catch (err) {
                 console.log(`${this.tag} Bağlantı denemesi ${i + 1}/5 başarısız`);
             }
         }
 
-        if (!this.browser) {
-            throw new Error('Tarayıcı bağlantısı kurulamadı');
-        }
+        if (!this.browser) throw new Error('Tarayıcıya bağlanılamadı');
 
         const pages = await this.browser.pages();
         this.page = pages[0] || await this.browser.newPage();
 
-        return this.browser;
+        // Facebook'a git
+        console.log(`${this.tag} Facebook açılıyor...`);
+        await this.page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 60000 });
     }
 
     /**
-     * Adım 4: Cookie ile session doğrula
+     * ADIM 2: Operatör Kararı (Manuel Kontrol)
      */
-    async verifyCookieSession() {
-        if (!this.account.cookie) {
-            return { valid: false, reason: 'no_cookie' };
+    async getOperatorDecision() {
+        console.log(`${this.tag} Adım 2: 10sn bekleniyor ve operatör kararı sorulacak...`);
+        await sleep(10000); // Sayfanın ve varsa checkpoint'in yüklenmesi için süre
+
+        // Kararı sor: SUCCESS veya FAILED
+        const decision = await OperatorUI.askForStatus(this.page);
+        console.log(`${this.tag} Operatör Kararı: ${decision.toUpperCase()}`);
+        return decision;
+    }
+
+    /**
+     * ADIM 3: Finalizasyon (Başarılı ise)
+     */
+    async finalizeSuccess() {
+        console.log(`${this.tag} Adım 3: İşlem başarıyla tamamlanıyor...`);
+
+        // 1. Dil ayarlarına git (Kullanıcı talebi)
+        try {
+            console.log(`${this.tag} Dil ayarlarına gidiliyor...`);
+            await this.page.goto('https://www.facebook.com/settings/?tab=language', { waitUntil: 'networkidle2', timeout: 60000 });
+            await handlePopups(this.page);
+        } catch (e) {
+            console.log(`${this.tag} Ayarlar sayfası uyarısı: ${e.message}`);
         }
 
-        console.log(`${this.tag} Adım 4: Cookie ile session doğrulanıyor...`);
-        return await SessionValidator.verifySession(this.page);
-    }
+        // 2. Dil değişimi için bekle (Hazır olunca devam et)
+        await OperatorUI.waitForReady(this.page, 'Lütfen dili İngilizce yapın (Account Center için gerekli) ve HAZIR butonuna basın.');
 
-    /**
-     * Adım 5: Kullanıcı adı/şifre ile giriş yap
-     */
-    async loginWithCredentials() {
-        console.log(`${this.tag} Adım 5: Kullanıcı adı/şifre ile giriş yapılıyor...`);
-        return await login(this.page, this.account.username, this.account.password);
-    }
+        // 3. Şifre değiştir (Otomatik)
+        console.log(`${this.tag} Şifre değiştirme işlemi başlatılıyor...`);
+        const changeResult = await PasswordChangeService.changePassword(this.page, this.account.password);
 
-    /**
-     * Adım 6: Operatör müdahalesi bekle
-     */
-    async waitForOperator(message) {
-        console.log(`${this.tag} Adım 6: Operatör bekleniyor...`);
-        return await OperatorUI.waitForOperator(this.page, message);
-    }
+        let finalPassword = this.account.password;
+        if (changeResult.success) {
+            console.log(`${this.tag} ✅ Şifre değiştirildi: ${changeResult.newPassword}`);
+            finalPassword = changeResult.newPassword;
+        } else {
+            console.log(`${this.tag} ⚠️ Şifre değiştirilemedi: ${changeResult.error}`);
+            // Şifre değişmese bile operatör başarılı dediği için hesap başarılı sayılır
+            // Sadece loga yazıyoruz
+        }
 
-    /**
-     * Başarı durumunu bildir
-     */
-    async reportSuccess() {
+        // 4. Vision notlarını güncelle
+        const newNotes = [
+            `Kullanıcı: ${this.account.username}`,
+            `Şifre: ${finalPassword} ${changeResult.success ? '(YENİ)' : '(Eski)'}`,
+            `Durum: Operatör Onaylı`,
+            `Tarih: ${new Date().toLocaleString('tr-TR')}`
+        ].join('\n');
+
+        await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
+
+        // 5. Raporla
         await PanelAPI.updateAccountStatus(this.account.id, 'success');
-        await sendLog('success', 'FB_LOGIN', `✅ Giriş başarılı: ${this.account.username}`);
-        console.log(`${this.tag} ✅ BAŞARILI: ${this.account.username}`);
+        await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı: ${this.account.username}`);
     }
 
     /**
-     * Hata durumunu bildir
+     * ADIM 3: Temizlik (Hatalı ise)
      */
-    async reportFailure(status, errorMessage) {
-        await PanelAPI.updateAccountStatus(this.account.id, status, { errorMessage });
-        await sendLog('error', 'FB_LOGIN', `❌ ${errorMessage}: ${this.account.username}`);
-        console.log(`${this.tag} ❌ HATA: ${this.account.username} - ${errorMessage}`);
+    async finalizeFailure() {
+        console.log(`${this.tag} Adım 3: Hatalı işlem temizliği...`);
+
+        // Browser kapat
+        if (this.browser) await this.browser.disconnect();
+
+        // Profili DURDUR ve SİL
+        await sleep(2000);
+        await VisionProfileService.stopProfile(this.profile.folderId, this.profile.id);
+        await sleep(3000); // Durması için bekle
+        await VisionProfileService.deleteProfile(this.profile.folderId, this.profile.id);
+
+        // Raporla
+        await PanelAPI.updateAccountStatus(this.account.id, 'failed', { errorMessage: 'Operatör tarafından reddedildi' });
+        await sendLog('error', 'FB_LOGIN', `❌ Operatör Reddi: ${this.account.username}`);
     }
 
     /**
-     * Kaynakları temizle
+     * Genel Temizlik (Her durumda çalışır - Sadece browser kapatma ve durdurma)
+     * Not: Failed durumunda profil zaten silinmiş oluyor, double check yapıyoruz
      */
     async cleanup() {
-        // Tarayıcı bağlantısını kes
         if (this.browser) {
-            try {
-                await this.browser.disconnect();
-            } catch (e) { }
+            try { await this.browser.disconnect(); } catch (e) { }
         }
-
-        // Profili durdur
         if (this.profile) {
-            await sleep(3000);
-            await VisionProfileService.stopProfile(this.profile.folderId, this.profile.id);
+            // Sadece durdurmayı dene, silinmiş olabilir hata vermesin
+            try { await VisionProfileService.stopProfile(this.profile.folderId, this.profile.id); } catch (e) { }
         }
     }
 }
 
 /**
- * Ana işlem fonksiyonu - Orchestrator
- * Tek bir hesabı baştan sona işler
- * 
- * @param {object} account - Facebook hesap bilgileri
- * @param {number} threadId - Thread ID
- * @returns {boolean} - Başarılı mı
+ * Ana işlem fonksiyonu
  */
 async function processAccount(account, threadId = 1) {
     const job = new FacebookLoginJob(account, threadId);
-    const loginMode = account.loginMode || 'auto'; // auto veya password_only
 
     console.log(`\n${'='.repeat(60)}`);
     console.log(`[Thread-${threadId}:FBLogin] İşleniyor: ${account.username}`);
-    console.log(`[Thread-${threadId}:FBLogin] Mod: ${loginMode === 'password_only' ? '🔑 Şifre ile Giriş' : '🍪 Otomatik (Cookie öncelikli)'}`);
     console.log(`${'='.repeat(60)}\n`);
 
     try {
-        // 0. Proxy IP değiştir (yeni oturum için temiz IP)
-        console.log(`[Thread-${threadId}:FBLogin] Adım 0: Proxy IP değiştiriliyor...`);
-        await ProxyIPService.changeProxyIP(account.proxyIP);
+        // 1. Başlat
+        await job.initializeStack();
 
-        // 1. Profil oluştur
-        await job.createVisionProfile();
+        // 2. Operatör Kararı
+        const decision = await job.getOperatorDecision();
 
-        // 2. Cookie import et (password_only modunda atla)
-        if (loginMode !== 'password_only') {
-            await job.importCookies();
+        // 3. Karara göre işlem
+        if (decision === 'success') {
+            await job.finalizeSuccess();
+            // Başarılı durumda profili koruyoruz (cleanup sadece browser kapatır)
         } else {
-            console.log(`${job.tag} Adım 2: password_only modu - Cookie import atlanıyor`);
-        }
-
-        // 3. Tarayıcıyı başlat
-        await job.startBrowser();
-
-        // 4. Cookie ile session doğrula (password_only modunda atla)
-        if (loginMode !== 'password_only') {
-            const sessionResult = await job.verifyCookieSession();
-
-            if (sessionResult.valid) {
-                // Cookie çalışıyor!
-                await job.waitForOperator('Giriş başarılı. Ekranda buton veya onay varsa tıklayın.');
-                await job.reportSuccess();
-                return true;
-            }
-
-            // Cookie başarısız veya yok - auto modda cookie_failed rapor et
-            if (account.cookie && sessionResult.reason !== 'no_cookie') {
-                console.log(`${job.tag} Cookie çalışmıyor (${sessionResult.reason})`);
-                await job.reportFailure('cookie_failed', 'Cookie ile giriş başarısız');
-                return false;
-            }
-        } else {
-            console.log(`${job.tag} Adım 4: password_only modu - Cookie doğrulama atlanıyor`);
-        }
-
-        // 5. Kullanıcı adı/şifre ile giriş
-        const loginSuccess = await job.loginWithCredentials();
-
-        if (!loginSuccess) {
-            // Checkpoint kontrolü
-            const isCheckpoint = await SessionValidator.isCheckpointPage(job.page);
-            if (isCheckpoint) {
-                await job.waitForOperator('Facebook güvenlik doğrulaması gerekiyor. Doğrulamayı tamamlayın.');
-
-                // Doğrulama sonrası kontrol
-                const afterVerify = await SessionValidator.verifySession(job.page);
-                if (afterVerify.valid) {
-                    await job.reportSuccess();
-                    return true;
-                }
-            }
-
-            await job.reportFailure('login_failed', 'Kullanıcı adı/şifre ile giriş başarısız');
-            return false;
-        }
-
-        // Giriş başarılı
-        await job.waitForOperator('Giriş yapıldı. Ekranda "Devam Et" veya doğrulama butonu varsa tıklayın.');
-
-        // Son kontrol
-        const finalCheck = await SessionValidator.verifySession(job.page);
-        if (finalCheck.valid) {
-            await job.reportSuccess();
-            return true;
-        } else {
-            await job.reportFailure('needs_verify', 'Giriş yapıldı ama doğrulama gerekiyor');
-            return false;
+            await job.finalizeFailure();
+            // Hatalı durumda profil silindi
         }
 
     } catch (error) {
-        console.error(`${job.tag} HATA: ${error.message}`);
-        await job.reportFailure('login_failed', error.message);
-        return false;
+        console.error(`${job.tag} KRİTİK HATA: ${error.message}`);
+        await job.reportFailure('error', error.message); // Bu metod eski class'ta kaldı, manuel yapalım:
+        await PanelAPI.updateAccountStatus(account.id, 'error', { errorMessage: error.message });
 
     } finally {
         await job.cleanup();
@@ -279,40 +218,23 @@ async function processAccount(account, threadId = 1) {
 }
 
 /**
- * Proxy cache'i yükle (Başlangıçta bir kere çağrılmalı)
+ * Modül Başlatma
  */
 async function initialize() {
     console.log('[FBLogin] Modül başlatılıyor...');
-
-    // Proxy IP change config'lerini yükle
     ProxyIPService.initialize();
-
-    // Vision proxy cache'i yükle
     await VisionProfileService.loadProxies();
 
     if (!VisionProfileService.isProxyCacheLoaded()) {
         console.error('[FBLogin] HATA: Proxy cache yüklenemedi!');
         return false;
     }
-
-    console.log('[FBLogin] Modül hazır');
     return true;
 }
 
-/**
- * Bekleyen hesap var mı kontrol et
- */
-async function hasPendingAccounts() {
-    const result = await PanelAPI.shouldProcess();
-    return result.shouldProcess;
-}
-
-/**
- * Sonraki bekleyen hesabı al
- */
-async function getNextAccount() {
-    return await PanelAPI.getNextPendingAccount();
-}
+// Helper exports
+async function hasPendingAccounts() { return (await PanelAPI.shouldProcess()).shouldProcess; }
+async function getNextAccount() { return await PanelAPI.getNextPendingAccount(); }
 
 module.exports = {
     processAccount,

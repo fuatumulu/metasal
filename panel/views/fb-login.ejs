@@ -111,6 +111,13 @@
             <div class="card-body">
                 <form action="/fb-login/bulk-add" method="POST">
                     <div class="form-group">
+                        <div style="margin-bottom: 10px;">
+                            <label>Varsayılan Mobil Proxy HOST'u (İsteğe bağlı)</label>
+                            <input type="text" name="defaultProxyHost" class="form-control"
+                                placeholder="Örn: 192.168.1.10 (Eğer girilirse, IP'nin yanına |HOST olarak eklenir)"
+                                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+
                         <label>Format: kullanıcıadı:şifre:cookie:IP (her satır bir hesap)</label>
                         <textarea name="accountsText" rows="8" placeholder="user1@mail.com:pass123:base64cookieburada:185.123.45.67
 user2@mail.com:pass456::192.168.1.1
