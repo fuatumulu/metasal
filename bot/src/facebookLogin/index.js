@@ -44,7 +44,26 @@ class FacebookLoginJob {
         console.log(`${this.tag} Adım 1: Kaynaklar hazırlanıyor...`);
 
         // Proxy değiştir
-        await ProxyIPService.changeProxyIP(this.account.proxyIP);
+        // Proxy değiştir - Retry loop
+        while (true) {
+            const result = await ProxyIPService.changeProxyIP(this.account.proxyIP);
+
+            if (result.success) {
+                break;
+            }
+
+            if (result.waitSeconds) {
+                console.log(`${this.tag} Proxy rotasyon limiti, ${result.waitSeconds} saniye bekleniyor...`);
+                // Panel'e de bilgi ver
+                await PanelAPI.updateAccountStatus(this.account.id, 'processing', {
+                    errorMessage: `Proxy bekleniyor (${result.waitSeconds} sn)`
+                });
+                await sleep(result.waitSeconds * 1000);
+            } else {
+                // Bekleme süresi yoksa direkt hata ver
+                throw new Error(`Proxy IP değiştirilemedi: ${result.message}`);
+            }
+        }
 
         // Profil oluştur
         this.profile = await VisionProfileService.createProfile(this.account);
@@ -121,29 +140,44 @@ class FacebookLoginJob {
         console.log(`${this.tag} Şifre değiştirme işlemi başlatılıyor...`);
         const changeResult = await PasswordChangeService.changePassword(this.page, this.account.password);
 
+        // 4. SON KONTROL (Kullanıcı Talebi)
+        // Şifre değişiminden sonra ana sayfaya git ve son durumu sor
+        console.log(`${this.tag} Son kontrol için ana sayfaya gidiliyor...`);
+        try {
+            await this.page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 60000 });
+        } catch (e) { }
+
+        console.log(`${this.tag} Operatöre SON DURUM soruluyor...`);
+        const finalDecision = await OperatorUI.askForStatus(this.page);
+
         let finalPassword = this.account.password;
-        if (changeResult.success) {
-            console.log(`${this.tag} ✅ Şifre değiştirildi: ${changeResult.newPassword}`);
-            finalPassword = changeResult.newPassword;
+
+        if (finalDecision === 'success') {
+            // Şifre değişimi başarılı ise yeni şifreyi kaydet, değilse eskisi kalsın
+            if (changeResult.success) {
+                finalPassword = changeResult.newPassword;
+                console.log(`${this.tag} ✅ Şifre değiştirildi ve onaylandı: ${finalPassword}`);
+            } else {
+                console.log(`${this.tag} ⚠️ Şifre değiştirilemedi ama operatör onayladı.`);
+            }
+
+            // 5. Vision notlarını güncelle
+            const newNotes = [
+                `Kullanıcı: ${this.account.username}`,
+                `Şifre: ${finalPassword} ${changeResult.success ? '(YENİ)' : '(Eski)'}`,
+                `Durum: Operatör Onaylı (Final)`,
+                `Tarih: ${new Date().toLocaleString('tr-TR')}`
+            ].join('\n');
+
+            await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
+
+            // 6. Raporla
+            await PanelAPI.updateAccountStatus(this.account.id, 'success');
+            await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı ve Onaylandı: ${this.account.username}`);
         } else {
-            console.log(`${this.tag} ⚠️ Şifre değiştirilemedi: ${changeResult.error}`);
-            // Şifre değişmese bile operatör başarılı dediği için hesap başarılı sayılır
-            // Sadece loga yazıyoruz
+            console.log(`${this.tag} ❌ Operatör son adımda REDDETTİ.`);
+            throw new Error('Operatör tarafından son kontrolde reddedildi');
         }
-
-        // 4. Vision notlarını güncelle
-        const newNotes = [
-            `Kullanıcı: ${this.account.username}`,
-            `Şifre: ${finalPassword} ${changeResult.success ? '(YENİ)' : '(Eski)'}`,
-            `Durum: Operatör Onaylı`,
-            `Tarih: ${new Date().toLocaleString('tr-TR')}`
-        ].join('\n');
-
-        await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
-
-        // 5. Raporla
-        await PanelAPI.updateAccountStatus(this.account.id, 'success');
-        await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı: ${this.account.username}`);
     }
 
     /**

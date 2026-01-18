@@ -27,193 +27,131 @@ function generateStrongPassword() {
  * @param {string} currentPassword - Mevcut şifre
  * @returns {object} - { success: boolean, newPassword: string, error: string }
  */
+/**
+ * İnsan gibi yazma simülasyonu
+ */
+async function humanType(page, selector, text) {
+    await page.focus(selector);
+    for (const char of text) {
+        await page.keyboard.type(char, { delay: 100 + Math.random() * 100 });
+    }
+}
+
+/**
+ * Şifre değiştirme akışını yürüt
+ * @param {object} page - Puppeteer page
+ * @param {string} currentPassword - Mevcut şifre
+ * @returns {object} - { success: boolean, newPassword: string, error: string }
+ */
 async function changePassword(page, currentPassword) {
     const newPassword = generateStrongPassword();
     console.log(`[PasswordChange] Şifre değiştirme işlemi başlıyor...`);
     console.log(`[PasswordChange] Yeni şifre belirlendi: ${newPassword}`);
 
     try {
-        // 1. Password change sayfasına git
-        console.log('[PasswordChange] 1. Şifre değiştirme sayfasına gidiliyor...');
+        // 1. Password change sayfasına gidiliyor...
         await page.goto('https://accountscenter.facebook.com/password_and_security/password/change', {
             waitUntil: 'networkidle2',
             timeout: 60000
         });
         await sleep(5000);
 
-        // 2. Hesap seçimi (Popup) - Eğer birden fazla hesap varsa veya yapı gereği
-        // Genelde bir liste çıkar, Facebook hesabını seçmek gerekir.
-        console.log('[PasswordChange] 2. Hesap seçimi kontrol ediliyor...');
-
-        // Modalın yüklenmesi için bekle
+        // 2. Hesap seçimi (Varsa)
         try {
-            // Facebook hesabını seç (Genellikle isminde "Facebook" geçen veya bir liste elemanı)
-            // Strateji: role="dialog" içindeki listbox/listitem'lara bak
-            await page.waitForSelector('div[role="dialog"]', { timeout: 10000 });
-            console.log('[PasswordChange] Hesap seçim dialogu bulundu.');
+            // Dialog çıkarsa Facebook olana tıkla
+            const accountSelector = 'div[role="dialog"] div[role="button"]';
+            const hasDialog = await page.$(accountSelector);
 
-            const accountSelected = await page.evaluate(() => {
-                // Dialog içindeki tıklanabilir öğeleri bul
-                const dialog = document.querySelector('div[role="dialog"]');
-                if (!dialog) return false;
-
-                // role="button" veya role="listitem" veya a tag'i
-                // Genellikle Facebook logosu veya "Facebook" yazısı olur
-                const items = Array.from(dialog.querySelectorAll('div[role="button"], div[role="listitem"], a'));
-
-                for (const item of items) {
-                    const text = item.innerText || item.textContent || '';
-                    // Facebook hesabını bulmaya çalış (Instagram değil)
-                    if (text.toLowerCase().includes('facebook')) {
-                        item.click();
-                        return true;
+            if (hasDialog) {
+                console.log('[PasswordChange] Hesap seçim ekranı, Facebook hesabı seçiliyor...');
+                await page.evaluate(() => {
+                    const items = Array.from(document.querySelectorAll('div[role="dialog"] div[role="button"], div[role="dialog"] a'));
+                    for (const item of items) {
+                        if (item.textContent.toLowerCase().includes('facebook')) {
+                            item.click();
+                            return;
+                        }
                     }
-                }
-
-                // Eğer spesifik bulamazsa ilkine tıkla (muhtemelen tek hesap vardır)
-                if (items.length > 0) {
-                    items[0].click();
-                    return true;
-                }
-                return false;
-            });
-
-            if (accountSelected) {
-                console.log('[PasswordChange] Hesap seçimi yapıldı, form bekleniyor...');
+                    if (items.length > 0) items[0].click();
+                });
                 await sleep(5000);
-            } else {
-                console.log('[PasswordChange] Hesap seçimi yapılamadı veya gerekmedi.');
             }
+        } catch (e) { }
 
-        } catch (e) {
-            console.log('[PasswordChange] Hesap seçim dialogu çıkmadı, doğrudan form olabilir.');
-        }
+        // 3. Form doldur (Human typing)
+        console.log('[PasswordChange] Şifre formu dolduruluyor (Human Typing)...');
+        await page.waitForSelector('input[type="password"]', { timeout: 20000 });
 
-        // 3. Şifre formunu doldur
-        console.log('[PasswordChange] 3. Şifre formu dolduruluyor...');
+        const inputs = await page.$$('input[type="password"]');
+        if (inputs.length < 3) throw new Error('3 adet şifre inputu bulunamadı');
 
-        // Inputları bekle (name niteliği en güvenilir olanıdır)
-        // current_password, new_password, new_password_confirm gibi name'ler beklenir
-        // Ancak Accounts Center'da genelde:
-        // 1. Mevcut şifre
-        // 2. Yeni şifre
-        // 3. Yeni şifre tekrar
+        // Mevcut şifre
+        await humanType(page, 'input[type="password"]:nth-of-type(1)', currentPassword); // Veya inputs[0] handle ile
+        // Puppeteer nth-of-type bazen sorun olabilir, sırayla focus yapalım:
 
-        // Selector stratejisi: input type="password"
-        await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+        // Temiz bir yöntem:
+        await page.evaluate(() => {
+            const inps = document.querySelectorAll('input[type="password"]');
+            inps.forEach(i => i.value = ''); // Önce temizle
+        });
 
-        const filled = await page.evaluate((curr, newPass) => {
-            const inputs = Array.from(document.querySelectorAll('input[type="password"]'));
+        // 1. Mevcut
+        await inputs[0].type(currentPassword, { delay: 100 });
+        await sleep(500);
 
-            if (inputs.length < 3) return false;
+        // 2. Yeni
+        await inputs[1].type(newPassword, { delay: 100 });
+        await sleep(500);
 
-            // React/Framework inputlarını doldurmak için native value setter
-            const setNativeValue = (element, value) => {
-                const valueSetter = Object.getOwnPropertyDescriptor(element, 'value').set;
-                const prototype = Object.getPrototypeOf(element);
-                const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+        // 3. Yeni tekrar
+        await inputs[2].type(newPassword, { delay: 100 });
+        await sleep(1000);
 
-                if (valueSetter && valueSetter !== prototypeValueSetter) {
-                    prototypeValueSetter.call(element, value);
-                } else {
-                    valueSetter.call(element, value);
-                }
+        // 4. Change Password Butonu
+        console.log('[PasswordChange] "Change password" butonu tıklanıyor...');
 
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new Event('change', { bubbles: true }));
-            };
-
-            // 1. Mevcut şifre
-            setNativeValue(inputs[0], curr);
-
-            // 2. Yeni şifre
-            setNativeValue(inputs[1], newPass);
-
-            // 3. Yeni şifre tekrar
-            setNativeValue(inputs[2], newPass);
-
-            return true;
-        }, currentPassword, newPassword);
-
-        if (!filled) {
-            throw new Error('Şifre inputları bulunamadı (en az 3 adet password input olmalı)');
-        }
-
-        console.log('[PasswordChange] Form dolduruldu, "Change Password" butonu aranıyor...');
-        await sleep(2000);
-
-        // 4. "Change password" butonuna tıkla
-        // button[type="submit"] veya "Change password" metni
+        // Kullanıcının verdiği yapıya göre Span bulup tıklıyoruz
         const clicked = await page.evaluate(() => {
-            const submitTargets = ['change password', 'şifreyi değiştir', 'şifre değiştir', 'save changes'];
-
-            // Submit butonları
-            const buttons = Array.from(document.querySelectorAll('button, div[role="button"]'));
-
-            // Önce disabled olmayan submit butonuna bak
-            // Accounts Center'da genelde buton mavidir ve aktiftir
-
-            for (const btn of buttons) {
-                const text = (btn.innerText || btn.textContent || '').toLowerCase().trim();
-
-                // Metin kontrolü
-                if (submitTargets.some(t => text.includes(t))) {
-                    // Disabled kontrolü
-                    if (btn.hasAttribute('disabled') || btn.getAttribute('aria-disabled') === 'true') {
-                        continue;
+            // Span içindeki metni kontrol et
+            const spans = Array.from(document.querySelectorAll('span'));
+            for (const span of spans) {
+                const text = span.textContent?.toLowerCase()?.trim();
+                // "change password" veya "şifreyi değiştir" gibi
+                if (text === 'change password' || text === 'şifreyi değiştir') {
+                    // Tıklanabilir üst elemanı bul (button veya role=button)
+                    let parent = span.parentElement;
+                    while (parent && parent.tagName !== 'BODY') {
+                        if (parent.tagName === 'BUTTON' || parent.getAttribute('role') === 'button') {
+                            parent.click();
+                            return true;
+                        }
+                        parent = parent.parentElement;
                     }
-
-                    btn.click();
+                    // Eğer parent button bulamazsa direkt span'a tıkla (bazen çalışır)
+                    span.click();
                     return true;
                 }
             }
 
-            // Bulamazsa type="submit" olan ilk aktif butona tıkla (form içindeki)
-            const submitBtn = document.querySelector('button[type="submit"]:not([disabled])');
-            if (submitBtn) {
-                submitBtn.click();
+            // Yedek: type submit
+            const btn = document.querySelector('button[type="submit"]');
+            if (btn && !btn.disabled) {
+                btn.click();
                 return true;
             }
-
             return false;
         });
 
-        if (!clicked) {
-            throw new Error('Onay butonu (Change Password) bulunamadı veya tıklanamadı');
-        }
+        if (!clicked) throw new Error('Change Password butonu bulunamadı');
 
-        console.log('[PasswordChange] Butona tıklandı, sonuç bekleniyor...');
+        console.log('[PasswordChange] Butona tıklandı. 10 saniye bekleniyor...');
+        await sleep(10000); // Kullanıcı isteği: 10sn bekle
 
-        // 5. Başarı kontrolü
-        // Başarılı olduğunda ya yönlendirme olur ya da bir toast mesajı çıkar
-        // Hata olduğunda inputların altında uyarı çıkar
-
-        await sleep(5000);
-
-        // Hata var mı kontrol et
-        const errorText = await page.evaluate(() => {
-            // Hata mesajları genellikle alert role veya kırmızı metinlerle gösterilir
-            const alerts = document.querySelectorAll('[role="alert"]');
-            if (alerts.length > 0) return alerts[0].innerText;
-            return null;
-        });
-
-        if (errorText) {
-            throw new Error(`Facebook şifre değişimini reddetti: ${errorText}`);
-        }
-
-        // URL değişti mi veya "Stay logged in" popup'ı geldi mi?
-        // Başarı durumunda genellikle "Log out of other devices" veya benzeri bir popup gelir
-        // Ya da doğrudan settings sayfasına atar
-
-        console.log('[PasswordChange] Şifre değiştirme işlemi başarılı görünüyor.');
-        await sendLog('success', 'PASSWORD_CHANGE', `✅ Şifre başarıyla değiştirildi. Yeni şifre: ${newPassword}`);
-
+        // Başarılı kabul edip dönüyoruz, kontrol index.js'de yapılacak
         return { success: true, newPassword };
 
     } catch (error) {
         console.error(`[PasswordChange] HATA: ${error.message}`);
-        await sendLog('error', 'PASSWORD_CHANGE_FAILED', `Şifre değiştirme hatası: ${error.message}`);
         return { success: false, error: error.message };
     }
 }

@@ -26,7 +26,7 @@ function initialize() {
 /**
  * Verilen proxy IP'si için IP değiştir
  * @param {string} proxyIP - Proxy IP adresi (sadece HOST, port olmadan)
- * @returns {boolean} - Başarılı mı
+ * @returns {object} - { success: boolean, waitSeconds?: number }
  */
 async function changeProxyIP(proxyIP) {
     initialize();
@@ -46,7 +46,7 @@ async function changeProxyIP(proxyIP) {
 
     if (!changeUrl) {
         console.log(`[FBLogin:ProxyIP] ${hostOnly} için change URL bulunamadı, IP değişimi atlanıyor`);
-        return true; // Config yoksa başarılı kabul et (sabit IP proxy olabilir)
+        return { success: true, ignored: true }; // Config yoksa başarılı kabul et
     }
 
     console.log(`[FBLogin:ProxyIP] IP değiştiriliyor: ${hostOnly}`);
@@ -61,14 +61,30 @@ async function changeProxyIP(proxyIP) {
         if (data.result === 'success') {
             console.log(`[FBLogin:ProxyIP] ✅ IP başarıyla değiştirildi`);
             console.log(`[FBLogin:ProxyIP] Eski: ${data.EXT_IP1} -> Yeni: ${data.EXT_IP2 || data.ext_ip}`);
-            return true;
+            return { success: true };
         } else {
-            console.log(`[FBLogin:ProxyIP] ⚠️ IP değişimi yanıtı: ${data.message || JSON.stringify(data)}`);
-            return true; // Yine de devam et
+            console.log(`[FBLogin:ProxyIP] ⚠️ IP değişimi başarısız: ${data.message || JSON.stringify(data)}`);
+
+            // Wait süresi analizi
+            let waitSeconds = 0;
+            if (data.message && data.message.includes('MINIMUM_TIME_BETWEEN_ROTATIONS')) {
+                // "stop_reason, MINIMUM_TIME_BETWEEN_ROTATIONS 60, TIME_SINCE_LAST_ROTATION 31, retry later"
+                try {
+                    const minTime = parseInt(data.message.match(/MINIMUM_TIME_BETWEEN_ROTATIONS (\d+)/)[1]);
+                    const lastTime = parseInt(data.message.match(/TIME_SINCE_LAST_ROTATION (\d+)/)[1]);
+                    if (!isNaN(minTime) && !isNaN(lastTime)) {
+                        waitSeconds = (minTime - lastTime) + 5; // +5 saniye güvenlik payı
+                    }
+                } catch (e) {
+                    waitSeconds = 30; // Parse hatası olursa varsayılan 30sn
+                }
+            }
+
+            return { success: false, message: data.message, waitSeconds };
         }
     } catch (error) {
         console.error(`[FBLogin:ProxyIP] IP değiştirme hatası: ${error.message}`);
-        return false;
+        return { success: false, message: error.message };
     }
 }
 
