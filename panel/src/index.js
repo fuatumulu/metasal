@@ -76,12 +76,12 @@ app.get('/dashboard', requireSetup, requireAuth, async (req, res) => {
         ] = await Promise.all([
             prisma.visionProfile.count(),
             prisma.visionProfile.count({ where: { status: 'active' } }),
-            prisma.botTask.count({ where: { status: 'pending' } }),
+            prisma.botTask.count({ where: { status: { in: ['pending', 'processing'] } } }),
             prisma.target.count(),
             prisma.postTask.count(),
             prisma.comment.count(),
             prisma.botLog.findMany({
-                take: 50,
+                take: 100,
                 orderBy: { createdAt: 'desc' }
             })
         ]);
@@ -116,6 +116,58 @@ app.post('/dashboard/clear-logs', requireSetup, requireAuth, async (req, res) =>
         res.redirect('/dashboard');
     }
 });
+
+// ==================== OTOMATİK PROFİL SENKRONİZASYONU ====================
+const SYNC_INTERVAL = 3 * 60 * 60 * 1000; // 3 saat (milisaniye)
+
+/**
+ * Otomatik profil senkronizasyon görevi oluştur
+ */
+async function createAutoSyncTask() {
+    try {
+        // Zaten bekleyen bir senkronizasyon görevi var mı?
+        const existingTask = await prisma.botTask.findFirst({
+            where: {
+                taskType: 'sync_profiles',
+                status: { in: ['pending', 'processing'] }
+            }
+        });
+
+        if (existingTask) {
+            console.log('[AutoSync] Zaten bekleyen senkronizasyon görevi var, atlanıyor...');
+            return;
+        }
+
+        // Yeni senkronizasyon görevi oluştur
+        const task = await prisma.botTask.create({
+            data: {
+                taskType: 'sync_profiles',
+                status: 'pending'
+            }
+        });
+
+        // Log kaydet
+        await prisma.botLog.create({
+            data: {
+                level: 'info',
+                type: 'SYNC_SCHEDULED',
+                message: 'Otomatik profil senkronizasyonu planlandı (3 saatlik periyot)',
+                details: JSON.stringify({ taskId: task.id, scheduledAt: new Date().toISOString() })
+            }
+        });
+
+        console.log(`[AutoSync] Senkronizasyon görevi oluşturuldu: Task #${task.id}`);
+    } catch (error) {
+        console.error('[AutoSync] Senkronizasyon görevi oluşturma hatası:', error);
+    }
+}
+
+// Panel başlatıldığında: İlk senkronizasyonu 5 dakika sonra yap, sonra her 3 saatte bir
+setTimeout(() => {
+    createAutoSyncTask();
+    setInterval(createAutoSyncTask, SYNC_INTERVAL);
+    console.log('[AutoSync] Otomatik profil senkronizasyonu aktif (3 saatte bir)');
+}, 5 * 60 * 1000); // 5 dakika sonra başla
 
 // Dashboard: Bekleyen görevleri temizle
 app.post('/dashboard/clear-pending-tasks', requireSetup, requireAuth, async (req, res) => {

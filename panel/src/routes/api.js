@@ -403,11 +403,11 @@ router.post('/logs', async (req, res) => {
             }
         });
 
-        // OTOMATİK TEMİZLEME: En güncel 50 logu tut, gerisini sil
+        // OTOMATİK TEMİZLEME: En güncel 100 logu tut, gerisini sil
         const logCount = await prisma.botLog.count();
-        if (logCount > 50) {
+        if (logCount > 100) {
             const lastLogs = await prisma.botLog.findMany({
-                take: 50,
+                take: 100,
                 orderBy: { createdAt: 'desc' },
                 select: { id: true }
             });

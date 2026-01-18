@@ -130,34 +130,41 @@
                     <thead>
                         <tr>
                             <th>Zaman</th>
-                            <th>Tip</th>
                             <th>Seviye</th>
                             <th>Mesaj</th>
+                            <th>Görev</th>
                         </tr>
                     </thead>
                     <tbody>
                         <% if (logs && logs.length> 0) { %>
                             <% logs.forEach(log=> { %>
-                                <tr class="log-row level-<%= log.level %>">
-                                    <td class="log-time text-muted">
-                                        <%= log.createdAt %>
-                                    </td>
-                                    <td><span class="badge badge-type">
-                                            <%= log.type %>
-                                        </span></td>
-                                    <td><span class="badge badge-<%= log.level %>">
-                                            <%= log.level.toUpperCase() %>
-                                        </span></td>
-                                    <td class="log-message">
-                                        <%= log.message %>
-                                    </td>
-                                </tr>
-                                <% }); %>
-                                    <% } else { %>
-                                        <tr>
-                                            <td colspan="4" class="text-center">Henüz log bulunmuyor.</td>
-                                        </tr>
-                                        <% } %>
+                                <% let taskId=null; if (log.details) { try { const parsed=typeof log.details==='string'
+                                    ? JSON.parse(log.details) : log.details; taskId=parsed.taskId || null; } catch(e) {}
+                                    } %>
+                                    <tr class="log-row level-<%= log.level %>">
+                                        <td class="log-time text-muted">
+                                            <%= log.createdAt %>
+                                        </td>
+                                        <td><span class="badge badge-<%= log.level %>">
+                                                <%= log.level.toUpperCase() %>
+                                            </span></td>
+                                        <td class="log-message">
+                                            <%= log.message %>
+                                        </td>
+                                        <td class="log-task-id">
+                                            <% if (taskId) { %>
+                                                <span class="badge badge-task">#<%= taskId %></span>
+                                                <% } else { %>
+                                                    <span class="text-muted">-</span>
+                                                    <% } %>
+                                        </td>
+                                    </tr>
+                                    <% }); %>
+                                        <% } else { %>
+                                            <tr>
+                                                <td colspan="4" class="text-center">Henüz log bulunmuyor.</td>
+                                            </tr>
+                                            <% } %>
                     </tbody>
                 </table>
             </div>
@@ -234,6 +241,17 @@
         .badge-type {
             background-color: #e9ecef;
             color: #495057;
+        }
+
+        .badge-task {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 700;
+        }
+
+        .log-task-id {
+            text-align: center;
+            white-space: nowrap;
         }
 
         .badge-info {

@@ -637,7 +637,11 @@ async function commentCurrentPost(page, commentText) {
 
         // Enter tuşuna bas
         await page.keyboard.press('Enter');
-        await sleep(2000);
+
+        // Yorumun oturması için 8-10 saniye bekle
+        const commentWaitTime = Math.floor(Math.random() * 2000) + 8000; // 8000-10000ms arası
+        console.log(`Yorum gönderildi, ${Math.round(commentWaitTime / 1000)} saniye bekleniyor (yorumun oturması için)...`);
+        await sleep(commentWaitTime);
 
         console.log('Yorum yapıldı');
         await sendLog('success', 'POST_COMMENT_SUCCESS', `Yorum başarıyla yapıldı: "${commentText}"`);

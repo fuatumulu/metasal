@@ -76,15 +76,29 @@ async function processTask(task, threadId) {
     // 1. Özel Görev: Senkronizasyon (Tarayıcı gerektirmez)
     if (task.taskType === 'sync_profiles') {
         try {
+            // Senkronizasyon başladı logu
+            await sendLog('info', 'SYNC_START', `Profil senkronizasyonu başlatıldı (Görev #${task.id})`, { taskId: task.id });
+
             const profiles = await listProfiles();
             if (profiles.length > 0) {
                 const success = await pushProfiles(profiles);
-                if (success) await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
+                if (success) {
+                    await reportTaskResult(task.id, 'completed', `${profiles.length} profil senkronize edildi`);
+                    // Başarı logu
+                    await sendLog('success', 'SYNC_COMPLETE', `Profil senkronizasyonu tamamlandı: ${profiles.length} profil güncellendi`, { taskId: task.id, profileCount: profiles.length });
+                } else {
+                    await reportTaskResult(task.id, 'failed', 'Panel\'e profil gönderilemedi');
+                    await sendLog('error', 'SYNC_FAILED', `Profil senkronizasyonu başarısız: Panel'e veri gönderilemedi`, { taskId: task.id });
+                }
             } else {
                 await reportTaskResult(task.id, 'failed', 'Vision API\'dan profil alınamadı');
+                // Hata logu
+                await sendLog('error', 'SYNC_FAILED', `Profil senkronizasyonu başarısız: Vision API'dan profil alınamadı`, { taskId: task.id });
             }
         } catch (err) {
             await reportTaskResult(task.id, 'failed', err.message);
+            // Hata logu
+            await sendLog('error', 'SYNC_FAILED', `Profil senkronizasyonu hatası: ${err.message}`, { taskId: task.id, error: err.message });
         }
         return;
     }
