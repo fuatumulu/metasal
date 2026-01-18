@@ -151,29 +151,46 @@ class FacebookLoginJob {
         const finalDecision = await OperatorUI.askForStatus(this.page);
 
         let finalPassword = this.account.password;
+        let passwordNote = '(Eski)';
 
         if (finalDecision === 'success') {
-            // Şifre değişimi başarılı ise yeni şifreyi kaydet, değilse eskisi kalsın
+            // Şifre değişimi başarılı ise yeni şifreyi kaydet
             if (changeResult.success) {
                 finalPassword = changeResult.newPassword;
+                passwordNote = '(YENİ)';
                 console.log(`${this.tag} ✅ Şifre değiştirildi ve onaylandı: ${finalPassword}`);
             } else {
                 console.log(`${this.tag} ⚠️ Şifre değiştirilemedi ama operatör onayladı.`);
             }
+        } else if (finalDecision === 'password_skipped') {
+            console.log(`${this.tag} ⚠️ Operatör şifre değişiminin başarısız olduğunu belirtti (Hesap SAĞLAM).`);
+            passwordNote = '(DEĞİŞMEDİ - Operatör)';
+        }
 
+        if (finalDecision === 'success' || finalDecision === 'password_skipped') {
             // 5. Vision notlarını güncelle
-            const newNotes = [
+            // 5. Vision notlarını güncelle
+            const noteLines = [
                 `Kullanıcı: ${this.account.username}`,
-                `Şifre: ${finalPassword} ${changeResult.success ? '(YENİ)' : '(Eski)'}`,
-                `Durum: Operatör Onaylı (Final)`,
-                `Tarih: ${new Date().toLocaleString('tr-TR')}`
-            ].join('\n');
+                `Eski Şifre: ${this.account.password}`
+            ];
+
+            if (finalPassword !== this.account.password) {
+                noteLines.push(`YENİ Şifre: ${finalPassword}`);
+            } else {
+                noteLines.push(`Durum Notu: Şifre değişmedi (${passwordNote})`);
+            }
+
+            noteLines.push(`Durum: Operatör Onaylı (Final)`);
+            noteLines.push(`Tarih: ${new Date().toLocaleString('tr-TR')}`);
+
+            const newNotes = noteLines.join('\n');
 
             await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
 
             // 6. Raporla
             await PanelAPI.updateAccountStatus(this.account.id, 'success');
-            await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı ve Onaylandı: ${this.account.username}`);
+            await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı: ${this.account.username} (${passwordNote})`);
         } else {
             console.log(`${this.tag} ❌ Operatör son adımda REDDETTİ.`);
             throw new Error('Operatör tarafından son kontrolde reddedildi');

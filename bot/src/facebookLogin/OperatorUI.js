@@ -68,6 +68,19 @@ async function askForStatus(page) {
                     cursor: pointer;
                     transition: all 0.2s;
                 ">❌ HATALI</button>
+
+                <button id="btn-pass-skip" style="
+                    flex: 1;
+                    padding: 12px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    background: #ed8936;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                ">⚠️ ŞİFRE DEĞİŞMEDİ</button>
                 
                 <button id="btn-success" style="
                     flex: 1;
@@ -90,6 +103,11 @@ async function askForStatus(page) {
         document.getElementById('btn-failed').onclick = () => {
             window.__operatorDecision = 'failed';
             overlay.innerHTML = '<p style="color: #c53030; font-weight: 600;">❌ İŞARETLENDİ: HATALI</p>';
+        };
+
+        document.getElementById('btn-pass-skip').onclick = () => {
+            window.__operatorDecision = 'password_skipped';
+            overlay.innerHTML = '<p style="color: #dd6b20; font-weight: 600;">⚠️ İŞARETLENDİ: ŞİFRE DEĞİŞMEDİ (BAŞARILI)</p>';
         };
 
         document.getElementById('btn-success').onclick = () => {

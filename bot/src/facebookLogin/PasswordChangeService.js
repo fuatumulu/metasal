@@ -22,18 +22,11 @@ function generateStrongPassword() {
 }
 
 /**
- * Şifre değiştirme akışını yürüt
- * @param {object} page - Puppeteer page
- * @param {string} currentPassword - Mevcut şifre
- * @returns {object} - { success: boolean, newPassword: string, error: string }
+ * İnsan gibi yazma simülasyonu (Element Handle üzerinden)
  */
-/**
- * İnsan gibi yazma simülasyonu
- */
-async function humanType(page, selector, text) {
-    await page.focus(selector);
+async function typeHumanely(element, text) {
     for (const char of text) {
-        await page.keyboard.type(char, { delay: 100 + Math.random() * 100 });
+        await element.type(char, { delay: 50 + Math.random() * 150 });
     }
 }
 
@@ -85,64 +78,95 @@ async function changePassword(page, currentPassword) {
         const inputs = await page.$$('input[type="password"]');
         if (inputs.length < 3) throw new Error('3 adet şifre inputu bulunamadı');
 
-        // Mevcut şifre
-        await humanType(page, 'input[type="password"]:nth-of-type(1)', currentPassword); // Veya inputs[0] handle ile
-        // Puppeteer nth-of-type bazen sorun olabilir, sırayla focus yapalım:
-
-        // Temiz bir yöntem:
+        // Inputları temizle
         await page.evaluate(() => {
             const inps = document.querySelectorAll('input[type="password"]');
-            inps.forEach(i => i.value = ''); // Önce temizle
+            inps.forEach(i => i.value = '');
         });
 
-        // 1. Mevcut
-        await inputs[0].type(currentPassword, { delay: 100 });
+        // 1. Mevcut Şifre
+        await typeHumanely(inputs[0], currentPassword);
         await sleep(500);
 
-        // 2. Yeni
-        await inputs[1].type(newPassword, { delay: 100 });
+        // 2. Yeni Şifre
+        await typeHumanely(inputs[1], newPassword);
         await sleep(500);
 
-        // 3. Yeni tekrar
-        await inputs[2].type(newPassword, { delay: 100 });
+        // 3. Yeni Şifre (Tekrar)
+        await typeHumanely(inputs[2], newPassword);
         await sleep(1000);
 
-        // 4. Change Password Butonu
-        console.log('[PasswordChange] "Change password" butonu tıklanıyor...');
-
-        // Kullanıcının verdiği yapıya göre Span bulup tıklıyoruz
-        const clicked = await page.evaluate(() => {
-            // Span içindeki metni kontrol et
-            const spans = Array.from(document.querySelectorAll('span'));
-            for (const span of spans) {
-                const text = span.textContent?.toLowerCase()?.trim();
-                // "change password" veya "şifreyi değiştir" gibi
-                if (text === 'change password' || text === 'şifreyi değiştir') {
-                    // Tıklanabilir üst elemanı bul (button veya role=button)
-                    let parent = span.parentElement;
-                    while (parent && parent.tagName !== 'BODY') {
-                        if (parent.tagName === 'BUTTON' || parent.getAttribute('role') === 'button') {
-                            parent.click();
-                            return true;
-                        }
-                        parent = parent.parentElement;
-                    }
-                    // Eğer parent button bulamazsa direkt span'a tıkla (bazen çalışır)
-                    span.click();
-                    return true;
-                }
-            }
-
-            // Yedek: type submit
-            const btn = document.querySelector('button[type="submit"]');
-            if (btn && !btn.disabled) {
-                btn.click();
-                return true;
-            }
-            return false;
+        // 3.5 Validation Tetikle (Blur)
+        await page.evaluate(() => {
+            const inps = document.querySelectorAll('input[type="password"]');
+            if (inps.length > 0) inps[inps.length - 1].blur();
+            document.body.click();
         });
+        await sleep(1000);
 
-        if (!clicked) throw new Error('Change Password butonu bulunamadı');
+        // 4. Change Password Butonu (Iframe ve Disabled kontrolü)
+        console.log('[PasswordChange] "Change password" butonu aranıyor (Iframe ve Status kontrolü)...');
+
+        const contexts = [page, ...page.frames()];
+        let clicked = false;
+
+        for (const context of contexts) {
+            try {
+                // Her frame içinde butonu ara ve aktif olmasını bekle
+                const contextClicked = await context.evaluate(async () => {
+                    const findBtn = () => {
+                        const submitTargets = ['change password', 'şifreyi değiştir', 'şifre değiştir', 'save changes', 'değişiklikleri kaydet'];
+
+                        // 1. Span/Div text kontrolü
+                        const spans = Array.from(document.querySelectorAll('span, div, button'));
+                        for (const el of spans) {
+                            // Text check
+                            const text = (el.innerText || el.textContent || '').toLowerCase().trim();
+                            if (submitTargets.some(t => text === t || text.includes(t))) {
+
+                                // Tıklanabilir ebeveyni bul
+                                let clickable = el;
+                                if (el.tagName !== 'BUTTON' && el.getAttribute('role') !== 'button') {
+                                    clickable = el.closest('button, [role="button"]') || el;
+                                }
+
+                                return clickable;
+                            }
+                        }
+
+                        // 2. Type submit
+                        return document.querySelector('button[type="submit"]');
+                    };
+
+                    // Polling ile butonun aktifleşmesini bekle (10 saniye)
+                    const startTime = Date.now();
+                    while (Date.now() - startTime < 10000) {
+                        const btn = findBtn();
+                        if (btn) {
+                            const isDisabled = btn.hasAttribute('disabled') || btn.getAttribute('aria-disabled') === 'true';
+                            const isDimmed = getComputedStyle(btn).opacity < 0.5 || getComputedStyle(btn).cursor === 'not-allowed';
+
+                            if (!isDisabled && !isDimmed) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+                    return false;
+                });
+
+                if (contextClicked) {
+                    console.log(`[PasswordChange] Buton bulundu ve tıklandı (Context: ${context === page ? 'Main' : 'Iframe'})`);
+                    clicked = true;
+                    break;
+                }
+            } catch (e) {
+                // Frame access error pass
+            }
+        }
+
+        if (!clicked) throw new Error('Change Password butonu bulunamadı veya aktifleşmedi');
 
         console.log('[PasswordChange] Butona tıklandı. 10 saniye bekleniyor...');
         await sleep(10000); // Kullanıcı isteği: 10sn bekle
