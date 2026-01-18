@@ -65,23 +65,22 @@ router.post('/bulk-add', async (req, res) => {
 
         for (const line of lines) {
             const parts = line.trim().split(':');
+            let username, password, cookie, proxyIP;
 
-            // Minimum: kullanıcı:şifre::IP veya kullanıcı:şifre:cookie:IP
-            if (parts.length < 4) {
-                errors.push(`Geçersiz format: ${line.substring(0, 30)}...`);
-                continue;
+            // Format 1: user:pass:cookie:ip (4 parça) - IP elle girilmiş
+            if (parts.length >= 4) {
+                [username, password, cookie, proxyIP] = parts;
+            }
+            // Format 2: user:pass:cookie (3 parça) - Default Proxy HOST (IP) kullan
+            else if (parts.length === 3) {
+                [username, password, cookie] = parts;
+                if (defaultProxyHost && defaultProxyHost.trim()) {
+                    proxyIP = defaultProxyHost.trim();
+                }
             }
 
-            const [username, password, cookie, ipPart] = parts;
-            // Eğer ipPart içinde zaten | varsa onu kullan, yoksa ve defaultProxyHost varsa onu ekle
-            let finalProxyIP = ipPart.trim();
-
-            if (defaultProxyHost && defaultProxyHost.trim() && !finalProxyIP.includes('|')) {
-                finalProxyIP = `${finalProxyIP}|${defaultProxyHost.trim()}`;
-            }
-
-            if (!username || !password || !finalProxyIP) {
-                errors.push(`Eksik bilgi: ${username || 'kullanıcı yok'}`);
+            if (!username || !password || !proxyIP) {
+                errors.push(`Eksik bilgi veya Proxy yok: ${username || line.substring(0, 15)}`);
                 continue;
             }
 
@@ -100,7 +99,7 @@ router.post('/bulk-add', async (req, res) => {
                     username: username.trim(),
                     password: password.trim(),
                     cookie: cookie && cookie.trim() ? cookie.trim() : null,
-                    proxyIP: finalProxyIP,
+                    proxyIP: proxyIP.trim(),
                     status: 'pending'
                 }
             });
