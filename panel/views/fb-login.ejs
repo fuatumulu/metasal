@@ -257,6 +257,7 @@ user2@mail.com:pass456::192.168.1.1
                             <tr>
                                 <th>#</th>
                                 <th>Kullanıcı</th>
+                                <th>Şifre</th>
                                 <th>Proxy IP</th>
                                 <th>Durum</th>
                                 <th>Hata Mesajı</th>
@@ -272,6 +273,9 @@ user2@mail.com:pass456::192.168.1.1
                                     </td>
                                     <td style="font-family: monospace;">
                                         <%= account.username %>
+                                    </td>
+                                    <td style="font-family: monospace; color: #d63384;">
+                                        <%= account.password %>
                                     </td>
                                     <td style="font-family: monospace;">
                                         <%= account.proxyIP %>

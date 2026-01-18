@@ -196,7 +196,7 @@ class FacebookLoginJob {
         await VisionProfileService.deleteProfile(this.profile.folderId, this.profile.id);
 
         // Raporla
-        await PanelAPI.updateAccountStatus(this.account.id, 'failed', { errorMessage: 'Operatör tarafından reddedildi' });
+        await PanelAPI.updateAccountStatus(this.account.id, 'login_failed', { errorMessage: 'Operatör tarafından reddedildi' });
         await sendLog('error', 'FB_LOGIN', `❌ Operatör Reddi: ${this.account.username}`);
     }
 
@@ -244,7 +244,7 @@ async function processAccount(account, threadId = 1) {
     } catch (error) {
         console.error(`${job.tag} KRİTİK HATA: ${error.message}`);
         await job.reportFailure('error', error.message); // Bu metod eski class'ta kaldı, manuel yapalım:
-        await PanelAPI.updateAccountStatus(account.id, 'error', { errorMessage: error.message });
+        await PanelAPI.updateAccountStatus(account.id, 'login_failed', { errorMessage: error.message });
 
     } finally {
         await job.cleanup();
