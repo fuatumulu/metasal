@@ -74,13 +74,22 @@
                     <span class="stat-label">Başarılı</span>
                 </div>
             </div>
-            <div class="stat-card danger">
-                <div class="stat-icon">❌</div>
+            <div class="stat-card" style="border-left: 4px solid #ff9800;">
+                <div class="stat-icon">🍪</div>
                 <div class="stat-info">
                     <span class="stat-value">
-                        <%= stats.failed %>
+                        <%= stats.cookieFailed %>
                     </span>
-                    <span class="stat-label">Hatalı</span>
+                    <span class="stat-label">Cookie Hatalı</span>
+                </div>
+            </div>
+            <div class="stat-card danger">
+                <div class="stat-icon">🔐</div>
+                <div class="stat-info">
+                    <span class="stat-value">
+                        <%= stats.loginFailed %>
+                    </span>
+                    <span class="stat-label">Giriş Hatalı</span>
                 </div>
             </div>
             <div class="stat-card" style="border-left: 4px solid #9c27b0;">
@@ -137,14 +146,15 @@ user2@mail.com:pass456::192.168.1.1
             </div>
         </div>
 
-        <!-- Hesap Listesi -->
+        <!-- Ana Hesap Listesi (Pending, Processing, Success) -->
         <div class="card">
             <div class="card-header">
                 <h3>📋 Hesap Listesi (<%= accounts.length %> hesap)</h3>
             </div>
             <div class="card-body" style="padding: 0;">
                 <% if (accounts.length===0) { %>
-                    <p style="padding: 20px; text-align: center; color: var(--gray-500);">Henüz hesap eklenmemiş.</p>
+                    <p style="padding: 20px; text-align: center; color: var(--gray-500);">Henüz hesap eklenmemiş veya
+                        tüm hesaplar sorunlu bölümünde.</p>
                     <% } else { %>
                         <table class="data-table">
                             <thead>
@@ -155,7 +165,6 @@ user2@mail.com:pass456::192.168.1.1
                                     <th>Cookie</th>
                                     <th>Durum</th>
                                     <th>Vision ID</th>
-                                    <th>Hata</th>
                                     <th>İşlemler</th>
                                 </tr>
                             </thead>
@@ -187,42 +196,22 @@ user2@mail.com:pass456::192.168.1.1
                                                     <span class="status-badge warning">🔄 İşleniyor</span>
                                                     <% } else if (account.status==='success' ) { %>
                                                         <span class="status-badge success">✅ Başarılı</span>
-                                                        <% } else if (account.status==='cookie_failed' ) { %>
-                                                            <span class="status-badge danger">🍪 Cookie Hatalı</span>
-                                                            <% } else if (account.status==='login_failed' ) { %>
-                                                                <span class="status-badge danger">🔐 Giriş Hatalı</span>
-                                                                <% } else if (account.status==='needs_verify' ) { %>
-                                                                    <span class="status-badge"
-                                                                        style="background: rgba(156, 39, 176, 0.15); color: #9c27b0;">⚠️
-                                                                        Doğrulama</span>
-                                                                    <% } else { %>
-                                                                        <span class="status-badge">
-                                                                            <%= account.status %>
-                                                                        </span>
-                                                                        <% } %>
+                                                        <% } else { %>
+                                                            <span class="status-badge">
+                                                                <%= account.status %>
+                                                            </span>
+                                                            <% } %>
                                         </td>
                                         <td style="font-family: monospace; font-size: 11px;">
                                             <%= account.visionId ? account.visionId.substring(0, 8) + '...' : '-' %>
                                         </td>
-                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-                                            title="<%= account.errorMessage || '' %>">
-                                            <%= account.errorMessage || '-' %>
-                                        </td>
                                         <td class="actions">
-                                            <% if (['cookie_failed', 'login_failed' , 'needs_verify'
-                                                ].includes(account.status)) { %>
-                                                <form action="/fb-login/retry/<%= account.id %>" method="POST"
-                                                    style="display: inline;">
-                                                    <button type="submit" class="btn btn-warning btn-sm"
-                                                        title="Yeniden Dene">🔄</button>
-                                                </form>
-                                                <% } %>
-                                                    <form action="/fb-login/delete/<%= account.id %>" method="POST"
-                                                        style="display: inline;"
-                                                        onsubmit="return confirm('Bu hesabı silmek istediğinizden emin misiniz?');">
-                                                        <button type="submit" class="btn btn-danger btn-sm"
-                                                            title="Sil">🗑️</button>
-                                                    </form>
+                                            <form action="/fb-login/delete/<%= account.id %>" method="POST"
+                                                style="display: inline;"
+                                                onsubmit="return confirm('Bu hesabı silmek istediğinizden emin misiniz?');">
+                                                <button type="submit" class="btn btn-danger btn-sm"
+                                                    title="Sil">🗑️</button>
+                                            </form>
                                         </td>
                                     </tr>
                                     <% }); %>
@@ -231,6 +220,109 @@ user2@mail.com:pass456::192.168.1.1
                         <% } %>
             </div>
         </div>
+
+        <!-- Sorunlu Hesaplar Bölümü -->
+        <% if (failedAccounts.length> 0) { %>
+            <div class="card" style="border: 2px solid rgba(220, 53, 69, 0.3);">
+                <div class="card-header"
+                    style="background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(255, 152, 0, 0.1)); display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="color: #dc3545;">⚠️ Sorunlu Hesaplar (<%= failedAccounts.length %> hesap)</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <form action="/fb-login/retry-all-with-password" method="POST" style="display: inline;">
+                            <button type="submit" class="btn btn-sm"
+                                style="background: linear-gradient(135deg, #ff9800, #f57c00); color: white;"
+                                title="Tüm cookie hatalı hesapları şifre ile dene">
+                                🔑 Tümünü Şifre ile Dene
+                            </button>
+                        </form>
+                        <form action="/fb-login/retry-all-failed" method="POST" style="display: inline;">
+                            <button type="submit" class="btn btn-warning btn-sm">🔄 Tümünü Yeniden Dene</button>
+                        </form>
+                        <form action="/fb-login/clear-failed" method="POST" style="display: inline;"
+                            onsubmit="return confirm('Tüm sorunlu hesaplar silinecek. Emin misiniz?');">
+                            <button type="submit" class="btn btn-danger btn-sm">🗑️ Sorunluları Temizle</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Kullanıcı</th>
+                                <th>Proxy IP</th>
+                                <th>Durum</th>
+                                <th>Hata Mesajı</th>
+                                <th>Deneme</th>
+                                <th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% failedAccounts.forEach((account, index)=> { %>
+                                <tr>
+                                    <td>
+                                        <%= index + 1 %>
+                                    </td>
+                                    <td style="font-family: monospace;">
+                                        <%= account.username %>
+                                    </td>
+                                    <td style="font-family: monospace;">
+                                        <%= account.proxyIP %>
+                                    </td>
+                                    <td>
+                                        <% if (account.status==='cookie_failed' ) { %>
+                                            <span class="status-badge"
+                                                style="background: rgba(255, 152, 0, 0.15); color: #ff9800;">🍪 Cookie
+                                                Hatalı</span>
+                                            <% } else if (account.status==='login_failed' ) { %>
+                                                <span class="status-badge danger">🔐 Giriş Hatalı</span>
+                                                <% } else if (account.status==='needs_verify' ) { %>
+                                                    <span class="status-badge"
+                                                        style="background: rgba(156, 39, 176, 0.15); color: #9c27b0;">⚠️
+                                                        Doğrulama Gerekli</span>
+                                                    <% } %>
+                                    </td>
+                                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                        title="<%= account.errorMessage || '' %>">
+                                        <%= account.errorMessage || '-' %>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span class="status-badge"
+                                            style="background: rgba(108, 117, 125, 0.15); color: #6c757d;">
+                                            <%= account.retryCount %>x
+                                        </span>
+                                    </td>
+                                    <td class="actions" style="white-space: nowrap;">
+                                        <% if (account.status==='cookie_failed' && account.password) { %>
+                                            <form action="/fb-login/retry-with-password/<%= account.id %>" method="POST"
+                                                style="display: inline;">
+                                                <button type="submit" class="btn btn-sm"
+                                                    style="background: linear-gradient(135deg, #ff9800, #f57c00); color: white;"
+                                                    title="Şifre ile Dene">
+                                                    🔑
+                                                </button>
+                                            </form>
+                                            <% } %>
+                                                <form action="/fb-login/retry/<%= account.id %>" method="POST"
+                                                    style="display: inline;">
+                                                    <button type="submit" class="btn btn-warning btn-sm"
+                                                        title="Yeniden Dene">🔄</button>
+                                                </form>
+                                                <form action="/fb-login/delete/<%= account.id %>" method="POST"
+                                                    style="display: inline;"
+                                                    onsubmit="return confirm('Bu hesabı silmek istediğinizden emin misiniz?');">
+                                                    <button type="submit" class="btn btn-danger btn-sm"
+                                                        title="Sil">🗑️</button>
+                                                </form>
+                                    </td>
+                                </tr>
+                                <% }); %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <% } %>
+
     </main>
 
     <style>
@@ -258,6 +350,15 @@ user2@mail.com:pass456::192.168.1.1
 
         .status-badge.warning {
             animation: pulse 1.5s infinite;
+        }
+
+        /* Sorunlu hesaplar tablosu için özel stiller */
+        .card[style*="border: 2px"] .data-table tr:hover {
+            background: rgba(220, 53, 69, 0.05);
+        }
+
+        .actions form {
+            margin: 0 2px;
         }
     </style>
 </body>

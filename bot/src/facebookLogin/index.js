@@ -188,9 +188,11 @@ class FacebookLoginJob {
  */
 async function processAccount(account, threadId = 1) {
     const job = new FacebookLoginJob(account, threadId);
+    const loginMode = account.loginMode || 'auto'; // auto veya password_only
 
     console.log(`\n${'='.repeat(60)}`);
     console.log(`[Thread-${threadId}:FBLogin] İşleniyor: ${account.username}`);
+    console.log(`[Thread-${threadId}:FBLogin] Mod: ${loginMode === 'password_only' ? '🔑 Şifre ile Giriş' : '🍪 Otomatik (Cookie öncelikli)'}`);
     console.log(`${'='.repeat(60)}\n`);
 
     try {
@@ -201,27 +203,35 @@ async function processAccount(account, threadId = 1) {
         // 1. Profil oluştur
         await job.createVisionProfile();
 
-        // 2. Cookie import et
-        await job.importCookies();
+        // 2. Cookie import et (password_only modunda atla)
+        if (loginMode !== 'password_only') {
+            await job.importCookies();
+        } else {
+            console.log(`${job.tag} Adım 2: password_only modu - Cookie import atlanıyor`);
+        }
 
         // 3. Tarayıcıyı başlat
         await job.startBrowser();
 
-        // 4. Cookie ile session doğrula
-        const sessionResult = await job.verifyCookieSession();
+        // 4. Cookie ile session doğrula (password_only modunda atla)
+        if (loginMode !== 'password_only') {
+            const sessionResult = await job.verifyCookieSession();
 
-        if (sessionResult.valid) {
-            // Cookie çalışıyor!
-            await job.waitForOperator('Giriş başarılı. Ekranda buton veya onay varsa tıklayın.');
-            await job.reportSuccess();
-            return true;
-        }
+            if (sessionResult.valid) {
+                // Cookie çalışıyor!
+                await job.waitForOperator('Giriş başarılı. Ekranda buton veya onay varsa tıklayın.');
+                await job.reportSuccess();
+                return true;
+            }
 
-        // Cookie başarısız veya yok
-        if (account.cookie && sessionResult.reason !== 'no_cookie') {
-            console.log(`${job.tag} Cookie çalışmıyor (${sessionResult.reason})`);
-            await job.reportFailure('cookie_failed', 'Cookie ile giriş başarısız');
-            return false;
+            // Cookie başarısız veya yok - auto modda cookie_failed rapor et
+            if (account.cookie && sessionResult.reason !== 'no_cookie') {
+                console.log(`${job.tag} Cookie çalışmıyor (${sessionResult.reason})`);
+                await job.reportFailure('cookie_failed', 'Cookie ile giriş başarısız');
+                return false;
+            }
+        } else {
+            console.log(`${job.tag} Adım 4: password_only modu - Cookie doğrulama atlanıyor`);
         }
 
         // 5. Kullanıcı adı/şifre ile giriş

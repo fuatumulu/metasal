@@ -6,20 +6,35 @@ const prisma = new PrismaClient();
 // Facebook Login sayfası
 router.get('/', async (req, res) => {
     try {
-        const accounts = await prisma.facebookAccount.findMany({
+        // Normal hesaplar (pending, processing, success)
+        const normalAccounts = await prisma.facebookAccount.findMany({
+            where: {
+                status: { in: ['pending', 'processing', 'success'] }
+            },
             orderBy: { createdAt: 'desc' }
         });
 
+        // Sorunlu hesaplar (cookie_failed, login_failed, needs_verify)
+        const failedAccounts = await prisma.facebookAccount.findMany({
+            where: {
+                status: { in: ['cookie_failed', 'login_failed', 'needs_verify'] }
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+
         // Durum istatistikleri
+        const allAccounts = [...normalAccounts, ...failedAccounts];
         const stats = {
-            pending: accounts.filter(a => a.status === 'pending').length,
-            processing: accounts.filter(a => a.status === 'processing').length,
-            success: accounts.filter(a => a.status === 'success').length,
-            failed: accounts.filter(a => ['cookie_failed', 'login_failed'].includes(a.status)).length,
-            needsVerify: accounts.filter(a => a.status === 'needs_verify').length
+            pending: allAccounts.filter(a => a.status === 'pending').length,
+            processing: allAccounts.filter(a => a.status === 'processing').length,
+            success: allAccounts.filter(a => a.status === 'success').length,
+            cookieFailed: failedAccounts.filter(a => a.status === 'cookie_failed').length,
+            loginFailed: failedAccounts.filter(a => a.status === 'login_failed').length,
+            needsVerify: failedAccounts.filter(a => a.status === 'needs_verify').length,
+            totalFailed: failedAccounts.length
         };
 
-        res.render('fb-login', { accounts, stats });
+        res.render('fb-login', { accounts: normalAccounts, failedAccounts, stats });
     } catch (error) {
         console.error('FB Login sayfası hatası:', error);
         res.status(500).send('Sunucu hatası');
@@ -106,6 +121,7 @@ router.post('/retry/:id', async (req, res) => {
             where: { id: parseInt(req.params.id) },
             data: {
                 status: 'pending',
+                loginMode: 'auto',
                 errorMessage: null
             }
         });
@@ -116,15 +132,34 @@ router.post('/retry/:id', async (req, res) => {
     }
 });
 
+// Şifre ile yeniden dene (cookie atlanır)
+router.post('/retry-with-password/:id', async (req, res) => {
+    try {
+        await prisma.facebookAccount.update({
+            where: { id: parseInt(req.params.id) },
+            data: {
+                status: 'pending',
+                loginMode: 'password_only',
+                errorMessage: null
+            }
+        });
+        res.redirect('/fb-login');
+    } catch (error) {
+        console.error('Şifre ile deneme hatası:', error);
+        res.redirect('/fb-login?error=retry');
+    }
+});
+
 // Tüm hatalı hesapları yeniden dene
 router.post('/retry-all-failed', async (req, res) => {
     try {
         await prisma.facebookAccount.updateMany({
             where: {
-                status: { in: ['cookie_failed', 'login_failed'] }
+                status: { in: ['cookie_failed', 'login_failed', 'needs_verify'] }
             },
             data: {
                 status: 'pending',
+                loginMode: 'auto',
                 errorMessage: null
             }
         });
@@ -132,6 +167,41 @@ router.post('/retry-all-failed', async (req, res) => {
     } catch (error) {
         console.error('Toplu yeniden deneme hatası:', error);
         res.redirect('/fb-login?error=retry');
+    }
+});
+
+// Tüm cookie hatalı hesapları şifre ile dene
+router.post('/retry-all-with-password', async (req, res) => {
+    try {
+        await prisma.facebookAccount.updateMany({
+            where: {
+                status: 'cookie_failed'
+            },
+            data: {
+                status: 'pending',
+                loginMode: 'password_only',
+                errorMessage: null
+            }
+        });
+        res.redirect('/fb-login');
+    } catch (error) {
+        console.error('Toplu şifre ile deneme hatası:', error);
+        res.redirect('/fb-login?error=retry');
+    }
+});
+
+// Sadece sorunlu hesapları temizle
+router.post('/clear-failed', async (req, res) => {
+    try {
+        await prisma.facebookAccount.deleteMany({
+            where: {
+                status: { in: ['cookie_failed', 'login_failed', 'needs_verify'] }
+            }
+        });
+        res.redirect('/fb-login');
+    } catch (error) {
+        console.error('Sorunlu hesap temizleme hatası:', error);
+        res.redirect('/fb-login?error=clear');
     }
 });
 

@@ -124,6 +124,7 @@ model FacebookAccount {
   cookie       String?  @db.LongText  // Base64 cookie (opsiyonel)
   proxyIP      String   // Kullanılacak proxy IP adresi
   status       String   @default("pending") // pending, processing, success, cookie_failed, login_failed, needs_verify
+  loginMode    String   @default("auto") // auto, password_only (cookie başarısız olunca şifre ile deneme modu)
   visionId     String?  // Oluşturulan Vision profil UUID'si
   folderId     String?  // Vision folder UUID
   errorMessage String?  @db.Text
