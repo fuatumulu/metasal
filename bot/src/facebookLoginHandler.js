@@ -7,7 +7,8 @@
  * Bu dosya SRP-uyumlu facebookLogin modülünü kullanır.
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { sleep } = require('./facebook');
 const FacebookLogin = require('./facebookLogin');
