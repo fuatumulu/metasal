@@ -78,6 +78,14 @@ router.post('/bulk-add', async (req, res) => {
                     proxyIP = defaultProxyHost.trim();
                 }
             }
+            // Format 3: user:pass (2 parça) - Cookie yok, Default Proxy HOST kullan
+            else if (parts.length === 2) {
+                [username, password] = parts;
+                cookie = null; // Cookie yok, sadece şifre ile login
+                if (defaultProxyHost && defaultProxyHost.trim()) {
+                    proxyIP = defaultProxyHost.trim();
+                }
+            }
 
             if (!username || !password || !proxyIP) {
                 errors.push(`Eksik bilgi veya Proxy yok: ${username || line.substring(0, 15)}`);

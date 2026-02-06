@@ -18,7 +18,6 @@ const VisionProfileService = require('./VisionProfileService');
 const CookieService = require('./CookieService');
 const OperatorUI = require('./OperatorUI');
 const ProxyIPService = require('./ProxyIPService');
-const PasswordChangeService = require('./PasswordChangeService');
 
 /**
  * Facebook Login Job Orchestrator
@@ -43,7 +42,6 @@ class FacebookLoginJob {
     async initializeStack() {
         console.log(`${this.tag} Adım 1: Kaynaklar hazırlanıyor...`);
 
-        // Proxy değiştir
         // Proxy değiştir - Retry loop
         while (true) {
             const result = await ProxyIPService.changeProxyIP(this.account.proxyIP);
@@ -60,8 +58,12 @@ class FacebookLoginJob {
                 });
                 await sleep(result.waitSeconds * 1000);
             } else {
-                // Bekleme süresi yoksa direkt hata ver
-                throw new Error(`Proxy IP değiştirilemedi: ${result.message}`);
+                // Bekleme süresi yoksa hesabı proxy_failed durumuna al ve atla
+                console.log(`${this.tag} Proxy değiştirilemedi, hesap atlanıyor: ${result.message}`);
+                await PanelAPI.updateAccountStatus(this.account.id, 'proxy_failed', {
+                    errorMessage: `Proxy hatası: ${result.message}`
+                });
+                return false; // İşlemi başarısız olarak işaretle
             }
         }
 
@@ -100,10 +102,91 @@ class FacebookLoginJob {
         const pages = await this.browser.pages();
         this.page = pages[0] || await this.browser.newPage();
 
-        // Facebook'a git
+        // Facebook'a git (yavaş proxy'ler için 120sn timeout)
         console.log(`${this.tag} Facebook açılıyor...`);
-        await this.page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 60000 });
+        await this.page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 120000 });
+
+        // Cookie kontrolü ve otomatik login denemesi
+        const autoLoginAttempted = await this.attemptAutoLogin();
+        if (autoLoginAttempted) {
+            console.log(`${this.tag} Login sonrası sayfa yüklenmesi bekleniyor...`);
+            // Login sonrası ek bekleme (2FA, checkpoint, ana sayfa vs. için)
+            await sleep(5000);
+        }
     }
+
+    /**
+     * Otomatik login denemesi (cookie çalışmadıysa)
+     * Facebook login formunu doldur ve giriş yap
+     * @returns {boolean} - Login formu bulundu ve dolduruldu mu
+     */
+    async attemptAutoLogin() {
+        try {
+            console.log(`${this.tag} Cookie kontrolü yapılıyor...`);
+
+            // Login formu var mı kontrol et (email input varlığı)
+            const emailInput = await this.page.$('[data-testid="royal-email"]') ||
+                await this.page.$('#email');
+
+            if (!emailInput) {
+                console.log(`${this.tag} Login formu bulunamadı, cookie çalışmış olabilir`);
+                return false; // Login ekranı yok, cookie çalışmış
+            }
+
+            // Username ve password kontrolü
+            if (!this.account.username || !this.account.password) {
+                console.log(`${this.tag} Username veya password yok, manuel login gerekli`);
+                return false;
+            }
+
+            console.log(`${this.tag} Login formu bulundu, otomatik giriş yapılıyor...`);
+
+            // 1. Email/Username gir
+            await emailInput.click(); // Focus
+            await sleep(300);
+            await emailInput.type(this.account.username, { delay: 80 });
+            console.log(`${this.tag} Username girildi`);
+
+            // 2. Password gir
+            const passInput = await this.page.$('[data-testid="royal-pass"]') ||
+                await this.page.$('#pass');
+
+            if (!passInput) {
+                console.log(`${this.tag} Password input bulunamadı`);
+                return false;
+            }
+
+            await passInput.click(); // Focus
+            await sleep(300);
+            await passInput.type(this.account.password, { delay: 80 });
+            console.log(`${this.tag} Password girildi`);
+
+            // 3. Login butonuna tıkla
+            const loginButton = await this.page.$('button[data-testid="royal-login-button"]') ||
+                await this.page.$('button[name="login"]') ||
+                await this.page.$('button[type="submit"]');
+
+            if (!loginButton) {
+                console.log(`${this.tag} Login butonu bulunamadı`);
+                return false;
+            }
+
+            console.log(`${this.tag} Login butonuna tıklanıyor...`);
+            await loginButton.click();
+
+            console.log(`${this.tag} ✅ Otomatik login yapıldı, sayfa yükleniyor...`);
+
+            // Navigation başlaması için kısa bekleme
+            await sleep(3000);
+
+            return true; // Otomatik login yapıldı
+
+        } catch (error) {
+            console.log(`${this.tag} Otomatik login hatası: ${error.message}`);
+            return false; // Hata oldu ama devam et
+        }
+    }
+
 
     /**
      * ADIM 2: Operatör Kararı (Manuel Kontrol)
@@ -124,7 +207,7 @@ class FacebookLoginJob {
     async finalizeSuccess() {
         console.log(`${this.tag} Adım 3: İşlem başarıyla tamamlanıyor...`);
 
-        // 1. Dil ayarlarına git (Kullanıcı talebi)
+        // 1. Dil ayarlarına git
         try {
             console.log(`${this.tag} Dil ayarlarına gidiliyor...`);
             await this.page.goto('https://www.facebook.com/settings/?tab=language', { waitUntil: 'networkidle2', timeout: 60000 });
@@ -134,67 +217,22 @@ class FacebookLoginJob {
         }
 
         // 2. Dil değişimi için bekle (Hazır olunca devam et)
-        await OperatorUI.waitForReady(this.page, 'Lütfen dili İngilizce yapın (Account Center için gerekli) ve HAZIR butonuna basın.');
+        await OperatorUI.waitForReady(this.page, 'Lütfen dili İngilizce yapın ve HAZIR butonuna basın.');
 
-        // 3. Şifre değiştir (Otomatik)
-        console.log(`${this.tag} Şifre değiştirme işlemi başlatılıyor...`);
-        const changeResult = await PasswordChangeService.changePassword(this.page, this.account.password);
+        // 3. Vision notlarını güncelle
+        const noteLines = [
+            `Kullanıcı: ${this.account.username}`,
+            `Şifre: ${this.account.password}`,
+            `Durum: Operatör Onaylı`,
+            `Tarih: ${new Date().toLocaleString('tr-TR')}`
+        ];
 
-        // 4. SON KONTROL (Kullanıcı Talebi)
-        // Şifre değişiminden sonra ana sayfaya git ve son durumu sor
-        console.log(`${this.tag} Son kontrol için ana sayfaya gidiliyor...`);
-        try {
-            await this.page.goto('https://www.facebook.com', { waitUntil: 'networkidle2', timeout: 60000 });
-        } catch (e) { }
+        const newNotes = noteLines.join('\n');
+        await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
 
-        console.log(`${this.tag} Operatöre SON DURUM soruluyor...`);
-        const finalDecision = await OperatorUI.askForStatus(this.page);
-
-        let finalPassword = this.account.password;
-        let passwordNote = '(Eski)';
-
-        if (finalDecision === 'success') {
-            // Şifre değişimi başarılı ise yeni şifreyi kaydet
-            if (changeResult.success) {
-                finalPassword = changeResult.newPassword;
-                passwordNote = '(YENİ)';
-                console.log(`${this.tag} ✅ Şifre değiştirildi ve onaylandı: ${finalPassword}`);
-            } else {
-                console.log(`${this.tag} ⚠️ Şifre değiştirilemedi ama operatör onayladı.`);
-            }
-        } else if (finalDecision === 'password_skipped') {
-            console.log(`${this.tag} ⚠️ Operatör şifre değişiminin başarısız olduğunu belirtti (Hesap SAĞLAM).`);
-            passwordNote = '(DEĞİŞMEDİ - Operatör)';
-        }
-
-        if (finalDecision === 'success' || finalDecision === 'password_skipped') {
-            // 5. Vision notlarını güncelle
-            // 5. Vision notlarını güncelle
-            const noteLines = [
-                `Kullanıcı: ${this.account.username}`,
-                `Eski Şifre: ${this.account.password}`
-            ];
-
-            if (finalPassword !== this.account.password) {
-                noteLines.push(`YENİ Şifre: ${finalPassword}`);
-            } else {
-                noteLines.push(`Durum Notu: Şifre değişmedi (${passwordNote})`);
-            }
-
-            noteLines.push(`Durum: Operatör Onaylı (Final)`);
-            noteLines.push(`Tarih: ${new Date().toLocaleString('tr-TR')}`);
-
-            const newNotes = noteLines.join('\n');
-
-            await VisionProfileService.updateProfileNotes(this.profile.id, this.profile.folderId, newNotes);
-
-            // 6. Raporla
-            await PanelAPI.updateAccountStatus(this.account.id, 'success');
-            await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı: ${this.account.username} (${passwordNote})`);
-        } else {
-            console.log(`${this.tag} ❌ Operatör son adımda REDDETTİ.`);
-            throw new Error('Operatör tarafından son kontrolde reddedildi');
-        }
+        // 4. Raporla
+        await PanelAPI.updateAccountStatus(this.account.id, 'success');
+        await sendLog('success', 'FB_LOGIN', `✅ İşlem Tamamlandı: ${this.account.username}`);
     }
 
     /**
@@ -243,8 +281,12 @@ async function processAccount(account, threadId = 1) {
     console.log(`${'='.repeat(60)}\n`);
 
     try {
-        // 1. Başlat
-        await job.initializeStack();
+        // 1. Başlat - false dönerse (proxy hatası) işlemi atla
+        const initialized = await job.initializeStack();
+        if (initialized === false) {
+            console.log(`${job.tag} İşlem atlandt (inisilization başarısız)`);
+            return; // cleanup'a git
+        }
 
         // 2. Operatör Kararı
         const decision = await job.getOperatorDecision();
@@ -260,7 +302,6 @@ async function processAccount(account, threadId = 1) {
 
     } catch (error) {
         console.error(`${job.tag} KRİTİK HATA: ${error.message}`);
-        await job.reportFailure('error', error.message); // Bu metod eski class'ta kaldı, manuel yapalım:
         await PanelAPI.updateAccountStatus(account.id, 'login_failed', { errorMessage: error.message });
 
     } finally {

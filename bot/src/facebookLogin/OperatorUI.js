@@ -31,101 +31,115 @@ const ANIMATION_STYLE = `
 `;
 
 /**
- * Operatörden durum onayı iste (Başarılı / Hatalı)
+ * Status modal'ını inject et (helper fonksiyon)
+ * @param {object} page 
+ */
+async function injectStatusModal(page) {
+    try {
+        await page.evaluate((styles, animParams) => {
+            // Varsa temizle
+            const old = document.getElementById('operator-overlay');
+            if (old) old.remove();
+
+            const style = document.createElement('style');
+            style.textContent = animParams;
+            document.head.appendChild(style);
+
+            const overlay = document.createElement('div');
+            overlay.id = 'operator-overlay';
+            overlay.style.cssText = styles;
+
+            overlay.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: #1a202c; font-size: 18px; font-weight: 600;">Hesap Durumu Nedir?</h3>
+                <p style="color: #4a5568; margin-bottom: 20px; font-size: 14px;">Lütfen kontrol edip karar verin.</p>
+                
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="btn-failed" style="
+                        flex: 1;
+                        padding: 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        background: #fc8181;
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    ">❌ HATALI</button>
+                    
+                    <button id="btn-success" style="
+                        flex: 1;
+                        padding: 12px;
+                        font-size: 14px;
+                        font-weight: 600;
+                        background: #48bb78;
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    ">✅ BAŞARILI</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Global değişkeni koru/oluştur
+            if (window.__operatorDecision === undefined) {
+                window.__operatorDecision = null;
+            }
+
+            document.getElementById('btn-failed').onclick = () => {
+                window.__operatorDecision = 'failed';
+                overlay.innerHTML = '<p style="color: #c53030; font-weight: 600;">❌ İŞARETLENDİ: HATALI</p>';
+            };
+
+            document.getElementById('btn-success').onclick = () => {
+                window.__operatorDecision = 'success';
+                overlay.innerHTML = '<p style="color: #2f855a; font-weight: 600;">✅ İŞARETLENDİ: BAŞARILI</p>';
+            };
+
+        }, styles, animParams);
+    } catch (e) {
+        // Sayfa yükleniyorsa veya context kaybolmuşsa yutalım
+    }
+}
+
+/**
+ * Operatörden durum onayı iste (Başarılı / Hatalı) - PERSISTENT
  * @param {object} page 
  * @returns {Promise<string>} 'success' | 'failed'
  */
 async function askForStatus(page) {
-    console.log(`[FBLogin:Operator] ⏳ Operatör kararı bekleniyor (Başarılı/Hatalı)...`);
+    console.log(`[FBLogin:Operator] ⏳ Operatör kararı bekleniyor (Persistent modal)...`);
 
-    await page.evaluate((styles, animParams) => {
-        // Varsa temizle
-        const old = document.getElementById('operator-overlay');
-        if (old) old.remove();
+    // İlk injection
+    await injectStatusModal(page, UI_STYLES, ANIMATION_STYLE);
 
-        const style = document.createElement('style');
-        style.textContent = animParams;
-        document.head.appendChild(style);
-
-        const overlay = document.createElement('div');
-        overlay.id = 'operator-overlay';
-        overlay.style.cssText = styles;
-
-        overlay.innerHTML = `
-            <h3 style="margin: 0 0 15px 0; color: #1a202c; font-size: 18px; font-weight: 600;">Hesap Durumu Nedir?</h3>
-            <p style="color: #4a5568; margin-bottom: 20px; font-size: 14px;">Lütfen kontrol edip karar verin.</p>
-            
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button id="btn-failed" style="
-                    flex: 1;
-                    padding: 12px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    background: #fc8181;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                ">❌ HATALI</button>
-
-                <button id="btn-pass-skip" style="
-                    flex: 1;
-                    padding: 12px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    background: #ed8936;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                ">⚠️ ŞİFRE DEĞİŞMEDİ</button>
-                
-                <button id="btn-success" style="
-                    flex: 1;
-                    padding: 12px;
-                    font-size: 14px;
-                    font-weight: 600;
-                    background: #48bb78;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                ">✅ BAŞARILI</button>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-
-        window.__operatorDecision = null;
-
-        document.getElementById('btn-failed').onclick = () => {
-            window.__operatorDecision = 'failed';
-            overlay.innerHTML = '<p style="color: #c53030; font-weight: 600;">❌ İŞARETLENDİ: HATALI</p>';
-        };
-
-        document.getElementById('btn-pass-skip').onclick = () => {
-            window.__operatorDecision = 'password_skipped';
-            overlay.innerHTML = '<p style="color: #dd6b20; font-weight: 600;">⚠️ İŞARETLENDİ: ŞİFRE DEĞİŞMEDİ (BAŞARILI)</p>';
-        };
-
-        document.getElementById('btn-success').onclick = () => {
-            window.__operatorDecision = 'success';
-            overlay.innerHTML = '<p style="color: #2f855a; font-weight: 600;">✅ İŞARETLENDİ: BAŞARILI</p>';
-        };
-
-    }, UI_STYLES, ANIMATION_STYLE);
-
-    // Kararı bekle
+    // Kararı bekle - Context error handling ile + Persistent modal
     while (true) {
-        const decision = await page.evaluate(() => window.__operatorDecision);
-        if (decision) {
-            await new Promise(r => setTimeout(r, 1000)); // Görsel geri bildirim için kısa bekleme
-            return decision;
+        try {
+            // 1. Karar kontrolü
+            const decision = await page.evaluate(() => window.__operatorDecision);
+            if (decision) {
+                await new Promise(r => setTimeout(r, 1000)); // Görsel geri bildirim için kısa bekleme
+                return decision;
+            }
+
+            // 2. Modal hala var mı? (sayfa değişmiş olabilir - 2FA, checkpoint vs)
+            const hasOverlay = await page.evaluate(() => !!document.getElementById('operator-overlay'));
+            if (!hasOverlay) {
+                console.log(`[FBLogin:Operator] Modal kayboldu (sayfa değişti), tekrar inject ediliyor...`);
+                await injectStatusModal(page, UI_STYLES, ANIMATION_STYLE);
+            }
+
+        } catch (e) {
+            // Context kaybolmuş olabilir (sayfa yenileniyor, navigation vs)
+            // Sessizce atla, bir sonraki döngüde tekrar dene
+            console.log(`[FBLogin:Operator] Context geçici olarak kayboldu, devam ediliyor...`);
         }
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 2000)); // 2 saniyede bir kontrol (context error toleransı için artırıldı)
     }
+
 }
 
 /**
@@ -208,7 +222,7 @@ async function waitForReady(page, taskDescription) {
             // Context kaybolmuş olabilir (sayfa değişiyor), bekle ve devam et
         }
 
-        await new Promise(r => setTimeout(r, 1000)); // 1 saniyede bir kontrol (performans dostu)
+        await new Promise(r => setTimeout(r, 2000)); // 2 saniyede bir kontrol (context error toleransı için artırıldı)
     }
 }
 

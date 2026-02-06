@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { getPendingTask, reportTaskResult, pushProfiles, sendLog, heartbeat } = require('./api');
-const { listProfiles, startProfile, stopProfile, updateProfileStatus } = require('./vision');
+const { listProfiles, startProfile, stopProfile, updateProfileStatus, clearAllCaches } = require('./vision');
 const { sleep, likeTarget, boostTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing, ensureMaximized } = require('./facebook');
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
 const axios = require('axios');
@@ -217,6 +217,15 @@ app.listen(PORT, () => {
             console.log('[Heartbeat] İlk bağlantı kuruldu');
         }
     });
+
+    // Cache temizleme interval - Her 6 saatte bir bellek temizliği
+    // Memory leak önleme için proxy ve status cache'lerini temizler
+    const CACHE_CLEANUP_INTERVAL = 6 * 60 * 60 * 1000; // 6 saat
+    setInterval(() => {
+        console.log('[Memory] Periyodik cache temizliği başlatılıyor...');
+        const result = clearAllCaches();
+        console.log(`[Memory] Cache temizlendi: ${result.proxiesCleared} proxy, ${result.statusesCleared} status`);
+    }, CACHE_CLEANUP_INTERVAL);
 
     startAllThreads().catch(console.error);
 });

@@ -499,6 +499,21 @@ function findProxyByIP(ip) {
     return null;
 }
 
+/**
+ * Memory leak önleme: Tüm cache'leri temizle
+ * Bu fonksiyon periyodik olarak çağrılmalı (örn: 6 saatte bir)
+ */
+function clearAllCaches() {
+    const proxyCount = proxyCache.size;
+    const statusCount = statusCache.size;
+
+    proxyCache.clear();
+    statusCache.clear();
+
+    console.log(`[Vision] Cache temizlendi: ${proxyCount} proxy, ${statusCount} status silindi`);
+    return { proxiesCleared: proxyCount, statusesCleared: statusCount };
+}
+
 module.exports = {
     listProfiles,
     startProfile,
@@ -511,5 +526,6 @@ module.exports = {
     createProfile,
     importCookies,
     exportCookies,
-    findProxyByIP
+    findProxyByIP,
+    clearAllCaches
 };

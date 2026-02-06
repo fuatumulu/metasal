@@ -1,5 +1,33 @@
+const fs = require('fs');
+const path = require('path');
 const ACTION_DELAY = parseInt(process.env.ACTION_DELAY) || 3000;
 const { sendLog } = require('./api');
+
+// Debug dosyası yolu ve maksimum boyutu (10MB)
+const DEBUG_FILE = path.join(__dirname, '..', 'debug.txt');
+const MAX_DEBUG_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+/**
+ * Debug bilgisini dosyaya yaz (log rotasyonu ile)
+ */
+function writeDebug(message) {
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${message}\n`;
+    try {
+        // Dosya boyutu kontrolü - 10MB'ı geçtiyse sıfırla
+        if (fs.existsSync(DEBUG_FILE)) {
+            const stats = fs.statSync(DEBUG_FILE);
+            if (stats.size > MAX_DEBUG_FILE_SIZE) {
+                fs.writeFileSync(DEBUG_FILE, `[${timestamp}] --- LOG ROTATED (Eski log silindi, boyut: ${Math.round(stats.size / 1024 / 1024)}MB) ---\n`);
+                console.log('[DEBUG-FILE] Log dosyası rotasyona uğradı (10MB limiti aşıldı)');
+            }
+        }
+        fs.appendFileSync(DEBUG_FILE, logLine);
+        console.log(`[DEBUG-FILE] ${message}`);
+    } catch (e) {
+        console.error('Debug dosyasına yazma hatası:', e.message);
+    }
+}
 
 /**
  * Belirtilen süre kadar bekle
@@ -163,7 +191,14 @@ async function login(page, username, password, cookie = null) {
  */
 async function handlePopups(page) {
     try {
-        await page.evaluate(() => {
+        const clicked = await page.evaluate(() => {
+            // Cookie consent popup için özel butonlar
+            const cookieConsentButtons = [
+                'allow all cookies', 'tüm çerezlere izin ver', 'alle cookies erlauben',
+                'accept all cookies', 'tüm çerezleri kabul et',
+                'allow essential and optional cookies', 'temel ve isteğe bağlı çerezlere izin ver'
+            ];
+
             const popupButtons = [
                 'not now', 'şimdi değil', 'close', 'kapat',
                 'accept all', 'tümünü kabul et', 'allow', 'izin ver',
@@ -172,17 +207,39 @@ async function handlePopups(page) {
                 'skip', 'geç', 'maybe later', 'belki sonra'
             ];
 
-            // Tüm butonları ve tıklanabilir metinleri tara
-            const buttons = Array.from(document.querySelectorAll('div[role="button"], span, b, button, a[role="button"]'));
-            for (const btn of buttons) {
+            let cookieClicked = false;
+
+            // Önce cookie consent butonlarını ara (özel işlem)
+            const allButtons = Array.from(document.querySelectorAll('div[role="button"], span, b, button, a[role="button"]'));
+            for (const btn of allButtons) {
                 const text = btn.textContent.trim().toLowerCase();
-                // Tam eşleşme veya içeriyorsa (daha agresif kapatma)
+                if (cookieConsentButtons.some(c => text === c || text.includes(c))) {
+                    try {
+                        btn.click();
+                        cookieClicked = true;
+                        console.log('[DEBUG] Cookie consent butonu tıklandı:', text);
+                    } catch (e) { }
+                }
+            }
+
+            // Diğer popup butonlarını da kapat
+            for (const btn of allButtons) {
+                const text = btn.textContent.trim().toLowerCase();
                 if (popupButtons.some(p => text === p || (text.length < 20 && text.includes(p)))) {
                     try { btn.click(); } catch (e) { }
                 }
             }
+
+            return cookieClicked;
         });
-        await sleep(1500);
+
+        // Cookie consent tıklandıysa 5 saniye bekle (anasayfanın yüklenmesi için)
+        if (clicked) {
+            console.log('[DEBUG] Cookie consent kabul edildi, 5 saniye bekleniyor...');
+            await sleep(5000);
+        } else {
+            await sleep(1500);
+        }
     } catch (e) { }
 }
 
@@ -235,6 +292,9 @@ async function likeTarget(page, targetUrl, targetType) {
 
                 if (element) {
                     await element.asElement()?.click();
+                    // Memory leak önleme: JSHandle'ı temizle
+                    await element.dispose();
+
                     console.log('Tıklandı, doğrulanıyor (10sn bekleniyor)...');
                     await sleep(10000); // Facebook'un durumu güncellemesi için 10 saniye bekle
 
@@ -290,6 +350,9 @@ async function likeTarget(page, targetUrl, targetType) {
 
                 if (element) {
                     await element.asElement()?.click();
+                    // Memory leak önleme: JSHandle'ı temizle
+                    await element.dispose();
+
                     console.log('Tıklandı, doğrulanıyor (10sn bekleniyor)...');
                     await sleep(10000);
 
@@ -341,17 +404,36 @@ async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
 
     while (Date.now() < endTime) {
         // Sayfadaki tüm gönderileri tara - Daha güvenilir seçiciler
-        const found = await page.evaluate((searchText) => {
-            // Yöntem 1: role="article" container'larını bul ve içindeki mesaj elementlerini ara
+        const result = await page.evaluate((searchText) => {
+            // Önce eski işaretleri temizle
+            document.querySelectorAll('[data-found-post="true"]').forEach(el => el.removeAttribute('data-found-post'));
+
+            // Yöntem 0 (YENİ - EN ÖNCELİKLİ): data-ad-rendering-role="story_message" içinde ara
             const articles = document.querySelectorAll('[role="article"]');
+            for (const article of articles) {
+                const storyMessageEl = article.querySelector('[data-ad-rendering-role="story_message"]');
+                if (storyMessageEl) {
+                    const text = storyMessageEl.innerText || storyMessageEl.textContent || '';
+                    if (text.toLowerCase().includes(searchText.toLowerCase())) {
+                        // Article'ı ÖNCE işaretle, sonra scroll yap
+                        article.setAttribute('data-found-post', 'true');
+                        article.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        return { found: true, text: text.substring(0, 200), method: 'story-message' };
+                    }
+                }
+            }
+
+            // Yöntem 1: role="article" container'larını bul ve içindeki mesaj elementlerini ara
             for (const article of articles) {
                 // Article içindeki mesaj elementlerini bul
                 const messageEl = article.querySelector('[data-ad-preview="message"], [data-ad-comet-preview="message"]');
                 if (messageEl) {
                     const text = messageEl.innerText || messageEl.textContent || '';
                     if (text.toLowerCase().includes(searchText.toLowerCase())) {
+                        // Article'ı ÖNCE işaretle, sonra scroll yap
+                        article.setAttribute('data-found-post', 'true');
                         article.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        return true;
+                        return { found: true, text: text.substring(0, 200), method: 'message-element' };
                     }
                 }
 
@@ -361,8 +443,10 @@ async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
                     const text = div.innerText || div.textContent || '';
                     // Çok kısa metinleri atla (tarih, isim gibi)
                     if (text.length > 30 && text.toLowerCase().includes(searchText.toLowerCase())) {
+                        // Article'ı ÖNCE işaretle, sonra scroll yap
+                        article.setAttribute('data-found-post', 'true');
                         article.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        return true;
+                        return { found: true, text: text.substring(0, 200), method: 'dir-auto-div' };
                     }
                 }
             }
@@ -372,25 +456,67 @@ async function scrollAndSearchForDuration(page, keyword, durationSeconds) {
             for (const msg of directMessages) {
                 const text = msg.innerText || msg.textContent || '';
                 if (text.toLowerCase().includes(searchText.toLowerCase())) {
-                    const container = msg.closest('[role="article"]') || msg.closest('div[data-pagelet]') || msg;
+                    // Önce [role="article"] ara
+                    let container = msg.closest('[role="article"]');
+
+                    // Article bulunamazsa, daha büyük bir parent bul (en az 200px yüksekliğinde)
+                    if (!container) {
+                        let parent = msg.parentElement;
+                        while (parent && parent !== document.body) {
+                            const rect = parent.getBoundingClientRect();
+                            if (rect.height >= 200) {
+                                container = parent;
+                                break;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+
+                    // Hala container bulunamadıysa, en azından data-pagelet dene
+                    if (!container) {
+                        container = msg.closest('div[data-pagelet]');
+                    }
+
+                    // Son çare: mesajın kendisini kullanma, bulamadı say
+                    if (!container) {
+                        continue; // Bu mesajı atla, başka mesajlara bak
+                    }
+
+                    container.setAttribute('data-found-post', 'true');
                     container.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return true;
+                    return { found: true, text: text.substring(0, 200), method: 'direct-message' };
                 }
             }
 
-            return false;
+            return { found: false };
         }, keyword);
 
-        if (found) {
+        if (result.found) {
             console.log(`Gönderi bulundu! (${scrollCount} scroll sonrası)`);
-            // Gönderi bulunduğunda butonların görünmesi için biraz daha aşağı kaydır (Kullanıcı isteği: 300px)
+            console.log(`[DEBUG] Bulunan metin (${result.method}): ${result.text}`);
+            await sendLog('debug', 'POST_FOUND_DEBUG', `Bulunan metin (${result.method}): ${result.text}`, { keyword, foundText: result.text, method: result.method });
+
+            // Debug dosyasına yaz
+            writeDebug('========== GÖNDERİ BULUNDU ==========');
+            writeDebug(`Aranan metin: "${keyword}"`);
+            writeDebug(`Bulunan metin: "${result.text}"`);
+            writeDebug(`Bulma yöntemi: ${result.method}`);
+            writeDebug(`Scroll sayısı: ${scrollCount}`);
+
+            // Article zaten arama sırasında işaretlendi (data-found-post="true")
+            // scrollIntoView zaten yapıldı, şimdi gönderiyi biraz daha görünür yapmak için 30px kaydır
             await page.evaluate(() => {
-                window.scrollBy({
-                    top: 300,
-                    behavior: 'smooth'
-                });
+                window.scrollBy({ top: 30, left: 0, behavior: 'smooth' });
             });
-            await sleep(1500);
+            await sleep(1000); // Scroll animasyonu için kısa bekleme
+
+            // Facebook'a "bu gönderi değerli" sinyali vermek için 10-15 saniye bekle
+            const viewDuration = Math.floor(Math.random() * 5000) + 10000; // 10000-15000ms (10-15 saniye)
+            console.log(`Gönderi inceleniyor... ${Math.round(viewDuration / 1000)} saniye beklenecek`);
+            writeDebug(`GÖNDERİ İNCELEME: ${Math.round(viewDuration / 1000)} saniye bekleniyor (değerli sinyal)`);
+            await sendLog('info', 'POST_VIEW_DWELL', `Gönderi inceleniyor: ${Math.round(viewDuration / 1000)} saniye bekleniyor...`);
+            await sleep(viewDuration);
+
             return true;
         }
 
@@ -531,39 +657,221 @@ async function findPostActionButtons(page) {
 }
 
 /**
- * Mevcut gönderiyi beğen - Metin tabanlı arama ("Like" / "Beğen")
+ * Mevcut gönderiyi beğen - Koordinat tabanlı Puppeteer click ile
+ * Türkçe ve İngilizce dil desteği
  */
 async function likeCurrentPost(page) {
     try {
         console.log('Gönderi beğeniliyor...');
         await sendLog('info', 'POST_LIKE_ATTEMPT', 'Beğeni butonu aranıyor...');
 
-        const liked = await page.evaluate(() => {
+        // Debug bilgilerini topla ve butonu bul
+        const likeButtonInfo = await page.evaluate(() => {
+            const likeAriaLabels = ['like', 'beğen'];
             const likeTexts = ['like', 'beğen'];
-            const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+            const debugInfo = {
+                markedArticleFound: false,
+                markedArticleRect: null,
+                allLikeButtons: [],
+                selectedButton: null
+            };
 
-            for (const el of allElements) {
-                const text = el.textContent.trim().toLowerCase();
+            // Önce işaretlenmiş article içinde ara
+            const markedArticle = document.querySelector('[data-found-post="true"]');
+            if (markedArticle) {
+                debugInfo.markedArticleFound = true;
+                const articleRect = markedArticle.getBoundingClientRect();
+                debugInfo.markedArticleRect = {
+                    top: articleRect.top,
+                    bottom: articleRect.bottom,
+                    height: articleRect.height
+                };
 
-                if (likeTexts.some(t => text === t)) {
-                    // Tıklanabilir elementi bul
-                    const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
-
-                    // Görünür alana getir ve tıkla
-                    clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    clickable.click();
-                    return true;
+                // Tüm beğen butonlarını topla (aria-label ile)
+                const ariaLabelButtons = markedArticle.querySelectorAll('[role="button"][aria-label]');
+                let buttonIndex = 0;
+                for (const btn of ariaLabelButtons) {
+                    const ariaLabel = btn.getAttribute('aria-label').toLowerCase();
+                    if (likeAriaLabels.some(t => ariaLabel === t)) {
+                        const rect = btn.getBoundingClientRect();
+                        debugInfo.allLikeButtons.push({
+                            index: buttonIndex,
+                            method: 'aria-label',
+                            label: ariaLabel,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2,
+                            top: rect.top,
+                            bottom: rect.bottom
+                        });
+                        buttonIndex++;
+                    }
                 }
+
+                // Tüm beğen butonlarını topla (metin ile)
+                const textElements = Array.from(markedArticle.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+                for (const el of textElements) {
+                    const text = el.textContent.trim().toLowerCase();
+                    if (likeTexts.some(t => text === t)) {
+                        const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                        const rect = clickable.getBoundingClientRect();
+                        // Aynı koordinatlı buton ekleme
+                        const exists = debugInfo.allLikeButtons.some(b =>
+                            Math.abs(b.x - (rect.left + rect.width / 2)) < 5 &&
+                            Math.abs(b.y - (rect.top + rect.height / 2)) < 5
+                        );
+                        if (!exists) {
+                            debugInfo.allLikeButtons.push({
+                                index: buttonIndex,
+                                method: 'text',
+                                label: text,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2,
+                                top: rect.top,
+                                bottom: rect.bottom
+                            });
+                            buttonIndex++;
+                        }
+                    }
+                }
+
+                // EN ALTTAKİ butonu seç (Y koordinatı en büyük olan)
+                if (debugInfo.allLikeButtons.length > 0) {
+                    // Y koordinatına göre sırala (en alttaki son olacak)
+                    debugInfo.allLikeButtons.sort((a, b) => a.y - b.y);
+
+                    // En alttaki butonu seç (son eleman)
+                    const selectedBtn = debugInfo.allLikeButtons[debugInfo.allLikeButtons.length - 1];
+                    debugInfo.selectedButton = selectedBtn;
+
+                    // Görünür alana getir
+                    const element = document.elementFromPoint(selectedBtn.x, selectedBtn.y);
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                        // Koordinatları yeniden hesapla (scroll sonrası)
+                        const newRect = element.getBoundingClientRect();
+                        return {
+                            found: true,
+                            method: `${selectedBtn.method}-bottom`,
+                            x: newRect.left + newRect.width / 2,
+                            y: newRect.top + newRect.height / 2,
+                            debug: debugInfo
+                        };
+                    }
+                }
+
+                // ===== FALLBACK: Container içinde buton bulunamadı =====
+                // Container'ın altındaki (Y > bottom) ilk like butonunu bul
+                const containerBottom = articleRect.bottom;
+                debugInfo.fallbackSearch = true;
+                debugInfo.containerBottom = containerBottom;
+
+                // Tüm sayfadaki like butonlarını ara
+                const allPageButtons = document.querySelectorAll('[role="button"][aria-label]');
+                for (const btn of allPageButtons) {
+                    const ariaLabel = btn.getAttribute('aria-label').toLowerCase();
+                    if (likeAriaLabels.some(t => ariaLabel === t)) {
+                        const rect = btn.getBoundingClientRect();
+                        // Sadece container'ın ALTINDA olan butonları al
+                        if (rect.top > containerBottom - 50) { // 50px tolerans
+                            debugInfo.fallbackButton = {
+                                method: 'fallback-below-container',
+                                label: ariaLabel,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2,
+                                containerBottom: containerBottom,
+                                buttonTop: rect.top
+                            };
+                            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            const newRect = btn.getBoundingClientRect();
+                            return {
+                                found: true,
+                                method: 'fallback-below-container',
+                                x: newRect.left + newRect.width / 2,
+                                y: newRect.top + newRect.height / 2,
+                                debug: debugInfo
+                            };
+                        }
+                    }
+                }
+
+                // Metin tabanlı fallback
+                const allPageTexts = Array.from(document.querySelectorAll('div[role="button"], span'));
+                for (const el of allPageTexts) {
+                    const text = el.textContent.trim().toLowerCase();
+                    if (likeTexts.some(t => text === t)) {
+                        const clickable = el.closest('[role="button"]') || el;
+                        const rect = clickable.getBoundingClientRect();
+                        if (rect.top > containerBottom - 50) {
+                            debugInfo.fallbackButton = {
+                                method: 'fallback-below-text',
+                                label: text,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top + rect.height / 2
+                            };
+                            clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            const newRect = clickable.getBoundingClientRect();
+                            return {
+                                found: true,
+                                method: 'fallback-below-text',
+                                x: newRect.left + newRect.width / 2,
+                                y: newRect.top + newRect.height / 2,
+                                debug: debugInfo
+                            };
+                        }
+                    }
+                }
+            } else {
+                debugInfo.markedArticleFound = false;
             }
-            return false;
+
+            return { found: false, debug: debugInfo };
         });
 
-        if (liked) {
+        // Debug dosyasına yaz
+        writeDebug('========== BEĞEN BUTONU ARAMA ==========');
+        writeDebug(`İşaretli article bulundu: ${likeButtonInfo.debug?.markedArticleFound}`);
+        if (likeButtonInfo.debug?.markedArticleRect) {
+            writeDebug(`Article pozisyonu: top=${likeButtonInfo.debug.markedArticleRect.top.toFixed(0)}, bottom=${likeButtonInfo.debug.markedArticleRect.bottom.toFixed(0)}, height=${likeButtonInfo.debug.markedArticleRect.height.toFixed(0)}`);
+        }
+        writeDebug(`Bulunan beğen buton sayısı: ${likeButtonInfo.debug?.allLikeButtons?.length || 0}`);
+
+        if (likeButtonInfo.debug?.allLikeButtons) {
+            for (const btn of likeButtonInfo.debug.allLikeButtons) {
+                writeDebug(`  [${btn.index}] ${btn.method}: "${btn.label}" - koordinat: (${btn.x.toFixed(0)}, ${btn.y.toFixed(0)}) - Y: ${btn.y.toFixed(0)}`);
+            }
+        }
+
+        // Fallback arama bilgisi
+        if (likeButtonInfo.debug?.fallbackSearch) {
+            writeDebug(`FALLBACK ARAMA: Container bottom=${likeButtonInfo.debug.containerBottom?.toFixed(0)}`);
+            if (likeButtonInfo.debug?.fallbackButton) {
+                writeDebug(`FALLBACK BUTON: ${likeButtonInfo.debug.fallbackButton.method} - "${likeButtonInfo.debug.fallbackButton.label}" - Y: ${likeButtonInfo.debug.fallbackButton.y?.toFixed(0)}`);
+            }
+        }
+
+        if (likeButtonInfo.found) {
+            writeDebug(`SEÇİLEN BUTON: ${likeButtonInfo.method} - koordinat: (${likeButtonInfo.x.toFixed(0)}, ${likeButtonInfo.y.toFixed(0)})`);
+            writeDebug('=========================================');
+
+            console.log(`[DEBUG] Beğen butonu bulundu (${likeButtonInfo.method}), koordinatlar: (${likeButtonInfo.x}, ${likeButtonInfo.y})`);
+
+            // Scroll sonrası 2 saniye bekle (kaydırma ve tıklama aynı anda olmasın)
+            console.log('Beğen butonuna tıklamadan önce 2 saniye bekleniyor...');
             await sleep(2000);
-            console.log('Gönderi beğenildi');
-            await sendLog('success', 'POST_LIKE_SUCCESS', 'Gönderi başarıyla beğenildi');
+
+            // Puppeteer ile koordinata tıkla
+            await page.mouse.click(likeButtonInfo.x, likeButtonInfo.y);
+
+            // Beğeni işleminin tamamlanması için 5 saniye bekle
+            await sleep(5000);
+
+            console.log(`Gönderi beğenildi (yöntem: ${likeButtonInfo.method})`);
+            await sendLog('success', 'POST_LIKE_SUCCESS', `Gönderi başarıyla beğenildi (yöntem: ${likeButtonInfo.method})`);
             return true;
         }
+
+        writeDebug('HATA: Beğen butonu bulunamadı!');
+        writeDebug('=========================================');
 
         console.log('Beğen butonu bulunamadı');
         await sendLog('warning', 'POST_LIKE_NOT_FOUND', 'Beğen butonu bulunamadı');
@@ -575,6 +883,7 @@ async function likeCurrentPost(page) {
     }
 }
 
+
 /**
  * Mevcut gönderiye yorum yap - İframe/popup desteği ile
  * "Write a public comment" / "Herkese açık yorum yazın" alanını arar
@@ -584,9 +893,26 @@ async function commentCurrentPost(page, commentText) {
         console.log('Yorum yapılıyor...');
         await sendLog('info', 'POST_COMMENT_ATTEMPT', `Yorum butonu aranıyor... Yorum: "${commentText}"`);
 
-        // Yorum butonuna tıkla (metin tabanlı)
+        // Yorum butonuna tıkla (metin tabanlı - önce işaretlenmiş article içinde ara)
         const clicked = await page.evaluate(() => {
             const commentTexts = ['comment', 'yorum yap', 'yorum'];
+
+            // Önce işaretlenmiş article içinde ara
+            const markedArticle = document.querySelector('[data-found-post="true"]');
+            if (markedArticle) {
+                const articleElements = Array.from(markedArticle.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+                for (const el of articleElements) {
+                    const text = el.textContent.trim().toLowerCase();
+                    if (commentTexts.some(t => text === t)) {
+                        const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                        clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        clickable.click();
+                        return true;
+                    }
+                }
+            }
+
+            // Fallback: Tüm sayfada ara
             const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
 
             for (const el of allElements) {
@@ -705,9 +1031,26 @@ async function shareCurrentPost(page) {
         console.log('Gönderi paylaşılıyor...');
         await sendLog('info', 'POST_SHARE_ATTEMPT', 'Paylaş butonu aranıyor...');
 
-        // Share butonuna tıkla (metin tabanlı)
+        // Share butonuna tıkla (metin tabanlı - önce işaretlenmiş article içinde ara)
         const clicked = await page.evaluate(() => {
             const shareTexts = ['share', 'paylaş'];
+
+            // Önce işaretlenmiş article içinde ara
+            const markedArticle = document.querySelector('[data-found-post="true"]');
+            if (markedArticle) {
+                const articleElements = Array.from(markedArticle.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
+                for (const el of articleElements) {
+                    const text = el.textContent.trim().toLowerCase();
+                    if (shareTexts.some(t => text === t)) {
+                        const clickable = el.closest('[role="button"]') || el.closest('div[tabindex="0"]') || el;
+                        clickable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        clickable.click();
+                        return true;
+                    }
+                }
+            }
+
+            // Fallback: Tüm sayfada ara
             const allElements = Array.from(document.querySelectorAll('div[role="button"], span, div[tabindex="0"]'));
 
             for (const el of allElements) {
@@ -770,8 +1113,9 @@ async function shareCurrentPost(page) {
  * Tarayıcı penceresinin durumunu kontrol eder ve küçükse tam ekran yapar
  */
 async function ensureMaximized(page) {
+    let session = null;
     try {
-        const session = await page.target().createCDPSession();
+        session = await page.target().createCDPSession();
         const { windowId, bounds } = await session.send('Browser.getWindowForTarget');
 
         if (bounds.windowState !== 'maximized') {
@@ -790,6 +1134,15 @@ async function ensureMaximized(page) {
             await page.setViewport({ width: 1920, height: 1080 });
         } catch (e) {
             console.error('[Browser] Viewport ayarlama hatası:', e.message);
+        }
+    } finally {
+        // Memory leak önleme: CDP Session'ı kapat
+        if (session) {
+            try {
+                await session.detach();
+            } catch (e) {
+                // Session zaten kapalı olabilir, hata yoksay
+            }
         }
     }
 }

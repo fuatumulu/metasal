@@ -160,25 +160,56 @@ async function createProfile(account) {
 
 
 /**
- * Profili başlat ve port bilgisini döndür
+ * Profili başlat ve port bilgisini döndür (Retry mekanizmalı)
  * @param {string} folderId 
  * @param {string} profileId 
+ * @param {number} maxRetries - Maksimum deneme sayısı (varsayılan: 3)
  * @returns {number|null} - Debug port
  */
-async function startProfile(folderId, profileId) {
-    try {
-        const response = await axios.get(`${VISION_LOCAL_API}/start/${folderId}/${profileId}`, {
-            headers: { 'X-Token': VISION_API_TOKEN }
-        });
+async function startProfile(folderId, profileId, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await axios.get(`${VISION_LOCAL_API}/start/${folderId}/${profileId}`, {
+                headers: { 'X-Token': VISION_API_TOKEN },
+                timeout: 60000 // 60 saniye timeout
+            });
 
-        const { port } = response.data;
-        console.log(`[FBLogin:VisionProfile] Profil başlatıldı, port: ${port}`);
-        return port;
-    } catch (error) {
-        console.error('[FBLogin:VisionProfile] Profil başlatma hatası:', error.response?.status, error.message);
-        console.error('[FBLogin:VisionProfile] Hata detayı:', JSON.stringify(error.response?.data, null, 2));
-        return null;
+            const { port } = response.data;
+            console.log(`[FBLogin:VisionProfile] Profil başlatıldı, port: ${port}`);
+            return port;
+        } catch (error) {
+            const isLastAttempt = attempt === maxRetries;
+            const status = error.response?.status;
+            const errorDetail = error.response?.data;
+
+            console.error(`[FBLogin:VisionProfile] Profil başlatma hatası (Deneme ${attempt}/${maxRetries}):`, status, error.message);
+
+            if (errorDetail) {
+                console.error('[FBLogin:VisionProfile] Hata detayı:', JSON.stringify(errorDetail, null, 2));
+            }
+
+            // Proxy timeout veya geçici hatalar için retry yap
+            const isRetryableError =
+                status === 500 ||
+                status === 502 ||
+                status === 503 ||
+                errorDetail?.message?.includes('Proxy') ||
+                errorDetail?.message?.includes('Timeout') ||
+                error.code === 'ECONNABORTED';
+
+            if (!isRetryableError || isLastAttempt) {
+                console.error(`[FBLogin:VisionProfile] Profil başlatılamadı, retry yapılamıyor`);
+                return null;
+            }
+
+            // Retry öncesi bekle (20 saniye sabit)
+            const waitSeconds = 20;
+            console.log(`[FBLogin:VisionProfile] ${waitSeconds} saniye sonra tekrar denenecek...`);
+            await new Promise(r => setTimeout(r, waitSeconds * 1000));
+        }
     }
+
+    return null;
 }
 
 /**
