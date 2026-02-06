@@ -124,6 +124,36 @@ class FacebookLoginJob {
         try {
             console.log(`${this.tag} Cookie kontrolü yapılıyor...`);
 
+            // Cookie consent popup'ı kapat (varsa)
+            try {
+                await sleep(2000); // Popup'ın yüklenmesi için bekle
+
+                // Facebook cookie consent seçicileri
+                const cookieAcceptSelectors = [
+                    'button[data-cookiebanner="accept_button"]',
+                    'button[title="Tümünü kabul et"]',
+                    'button[title="Accept all"]',
+                    'button:has-text("Tümünü kabul et")',
+                    'button:has-text("Accept all")'
+                ];
+
+                for (const selector of cookieAcceptSelectors) {
+                    try {
+                        const cookieBtn = await this.page.$(selector);
+                        if (cookieBtn) {
+                            await cookieBtn.click();
+                            console.log(`${this.tag} Cookie uyarısı kapatıldı`);
+                            await sleep(1000); // Popup kapanması için bekle
+                            break;
+                        }
+                    } catch (e) {
+                        // Bu seçici yoksa bir sonrakini dene
+                    }
+                }
+            } catch (e) {
+                console.log(`${this.tag} Cookie uyarısı bulunamadı veya hata: ${e.message}`);
+            }
+
             // Login formu var mı kontrol et (email input varlığı)
             const emailInput = await this.page.$('[data-testid="royal-email"]') ||
                 await this.page.$('#email');

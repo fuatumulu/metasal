@@ -33,8 +33,10 @@ const ANIMATION_STYLE = `
 /**
  * Status modal'ını inject et (helper fonksiyon)
  * @param {object} page 
+ * @param {string} styles - UI stilleri
+ * @param {string} animParams - Animasyon stilleri
  */
-async function injectStatusModal(page) {
+async function injectStatusModal(page, styles, animParams) {
     try {
         await page.evaluate((styles, animParams) => {
             // Varsa temizle
