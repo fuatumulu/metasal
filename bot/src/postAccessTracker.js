@@ -153,6 +153,10 @@ async function checkAllActiveTracks(startProfile, stopProfile, sleep) {
             return;
         }
 
+        // İlk açılışta her şeyin yerine oturması için bekle
+        console.log('[PostAccessTracker] Profil hazırlanıyor (20 saniye)...');
+        await sleep(20000);
+
         // Tüm URL'leri sırayla kontrol et
         for (let i = 0; i < tracks.length; i++) {
             const track = tracks[i];
