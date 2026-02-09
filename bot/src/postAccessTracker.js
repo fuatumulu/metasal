@@ -36,53 +36,106 @@ async function updateReachOnPanel(trackId, reach) {
     }
 }
 
-// Sayfadan erişim sayısını çek
+// Sayfadan erişim sayısını çek (XPath ile polling)
 async function extractReachFromPage(page) {
     try {
-        const reach = await page.evaluate(() => {
-            // "People reached" veya "Erişilen Kişiler" içeren elementi bul
-            const labels = Array.from(document.querySelectorAll('span'));
-            const reachLabel = labels.find(el =>
-                el.textContent.includes('People reached') ||
-                el.textContent.includes('Erişilen Kişiler')
-            );
+        console.log('[DEBUG] XPath ile erişim sayısı aranıyor...');
 
-            if (!reachLabel) {
-                console.log('Erişim etiketi bulunamadı');
-                return 0;
-            }
+        // Facebook Insights sayfasındaki erişim sayısının XPath'i
+        const xpath = '/html/body/div[1]/div/div[1]/div/div[3]/div/div/div[1]/div[1]/div/div[1]/div/div/div/div/div[2]/div/div[2]';
 
-            // Parent container'ı bul
-            const container = reachLabel.closest('div');
-            if (!container) {
-                console.log('Parent container bulunamadı');
-                return 0;
-            }
+        // Polling: Element render olana kadar bekle (max 30 saniye, 15 deneme x 2 saniye)
+        for (let attempt = 1; attempt <= 15; attempt++) {
+            console.log(`[DEBUG] Deneme ${attempt}/15 - XPath elementi aranıyor...`);
 
-            // Container içindeki tüm span'leri tara
-            const allSpans = container.querySelectorAll('span');
+            const reach = await page.evaluate((xpath) => {
+                // XPath ile elementi bul
+                const element = document.evaluate(
+                    xpath,
+                    document,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                    null
+                ).singleNodeValue;
 
-            for (let span of allSpans) {
-                const text = span.textContent.trim();
+                if (element) {
+                    const text = element.textContent.trim();
+                    console.log(`[DEBUG] XPath elementi bulundu, içerik: "${text}"`);
 
-                // Sadece rakam, virgül ve nokta içeren metni ara
-                if (/^[\d,.]+$/.test(text)) {
-                    // Virgül ve noktaları temizle, sayıya çevir
-                    const number = parseInt(text.replace(/[,.]/g, ''));
+                    // Virgüllü sayıyı + K/M/B kısaltmalarını bul: 23,738 veya 102,4K veya 1.2M
+                    const match = text.match(/[\d,.]+[KMB]?/i);
+                    if (match) {
+                        let numStr = match[0];
+                        let multiplier = 1;
 
-                    // Makul bir sayı mı kontrol et (0-10M arası)
-                    if (number > 0 && number < 10000000) {
-                        console.log('Erişim sayısı bulundu:', number);
-                        return number;
+                        // K, M, B kısaltmalarını kontrol et
+                        if (/[Kk]$/.test(numStr)) {
+                            multiplier = 1000;
+                            numStr = numStr.slice(0, -1); // K'yi çıkar
+                            console.log(`[DEBUG] "K" kısaltması tespit edildi, çarpan: 1000`);
+                        } else if (/[Mm]$/.test(numStr)) {
+                            multiplier = 1000000;
+                            numStr = numStr.slice(0, -1); // M'yi çıkar
+                            console.log(`[DEBUG] "M" kısaltması tespit edildi, çarpan: 1000000`);
+                        } else if (/[Bb]$/.test(numStr)) {
+                            multiplier = 1000000000;
+                            numStr = numStr.slice(0, -1); // B'yi çıkar
+                            console.log(`[DEBUG] "B" kısaltması tespit edildi, çarpan: 1000000000`);
+                        }
+
+                        console.log(`[DEBUG] "${match[0]}" kısaltma tespit edildi, çarpan: ${multiplier}`);
+
+                        let number;
+
+                        if (multiplier > 1) {
+                            // DURUM 1: Kısaltma VAR (K, M, B)
+                            // Bu durumda virgül/nokta ondalık ayraçtır.
+                            // Örn: 102,4K -> 102.4  |  1.2M -> 1.2
+                            // Tüm virgülleri noktaya çevirip float yapıyoruz
+                            const cleanNum = numStr.replace(/,/g, '.');
+                            number = parseFloat(cleanNum);
+                        } else {
+                            // DURUM 2: Kısaltma YOK (Tam Sayı)
+                            // Bu durumda virgül/nokta binlik ayraçtır.
+                            // Örn: 23,738 -> 23738  |  23.738 -> 23738
+                            // Tüm noktalama işaretlerini silip saf sayı yapıyoruz
+                            const cleanNum = numStr.replace(/[,.]/g, '');
+                            number = parseFloat(cleanNum);
+                        }
+
+                        // Çarpma işlemini yap
+                        number = Math.round(number * multiplier);
+
+                        console.log(`[DEBUG] Final Sayı: ${number} (Raw: ${match[0]})`);
+
+                        // Geçerli bir sayı mı kontrol et
+                        if (number > 0 && number < 10000000000) {
+                            return number;
+                        }
+                    } else {
+                        console.log('[DEBUG] Metin içinde sayı formatı bulunamadı');
                     }
+                } else {
+                    console.log('[DEBUG] XPath elementi henüz render olmamış');
                 }
+
+                return null;
+            }, xpath);
+
+            if (reach !== null && reach > 0) {
+                console.log(`[DEBUG] ✅ Erişim sayısı bulundu: ${reach}`);
+                return reach;
             }
 
-            console.log('Erişim sayısı parse edilemedi');
-            return 0;
-        });
+            // 2 saniye bekle ve tekrar dene
+            if (attempt < 15) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
 
-        return reach;
+        console.log('[DEBUG] ❌ 30 saniye sonra erişim sayısı bulunamadı');
+        return 0;
+
     } catch (error) {
         console.error('[PostAccessTracker] Erişim sayısı çekilirken hata:', error.message);
         return 0;
@@ -99,6 +152,15 @@ async function checkSingleURL(track, browser, sleep) {
         // Yeni sayfa aç
         const page = await browser.newPage();
 
+        // Browser console'u Node.js console'a bağla
+        page.on('console', msg => {
+            const type = msg.type();
+            const text = msg.text();
+            if (text.includes('[DEBUG]')) {
+                console.log(`[Browser Console] ${text}`);
+            }
+        });
+
         // URL'ye git
         console.log(`[PostAccessTracker] URL: ${url}`);
         await page.goto(url, {
@@ -106,12 +168,30 @@ async function checkSingleURL(track, browser, sleep) {
             timeout: 60000
         });
 
-        // Sayfa yüklenmesini bekle
-        await sleep(3000);
-
-        // Erişim sayısını çek
+        // Erişim sayısını çek (extractReachFromPage içinde 30 saniye polling var)
         const reach = await extractReachFromPage(page);
         console.log(`[PostAccessTracker] Track ID ${id} - Erişim: ${reach}`);
+
+        // Eğer reach 0 ise, debug için sayfa bilgilerini kaydet
+        if (reach === 0) {
+            try {
+                const pageTitle = await page.title();
+                console.log(`[DEBUG] Sayfa başlığı: ${pageTitle}`);
+
+                // Sayfa URL'ini kontrol et (yönlendirme olmuş olabilir)
+                const currentUrl = page.url();
+                console.log(`[DEBUG] Geçerli URL: ${currentUrl}`);
+
+                // İlk 10 span içeriğini logla
+                const spanContents = await page.evaluate(() => {
+                    const spans = Array.from(document.querySelectorAll('span'));
+                    return spans.slice(0, 10).map(s => s.textContent.trim()).filter(t => t.length > 0);
+                });
+                console.log(`[DEBUG] İlk 10 span içeriği:`, spanContents);
+            } catch (debugErr) {
+                console.error('[DEBUG] Sayfa debug hatası:', debugErr.message);
+            }
+        }
 
         // Panele gönder
         await updateReachOnPanel(id, reach);
@@ -180,7 +260,7 @@ async function checkAllActiveTracks(startProfile, stopProfile, sleep) {
         if (browser) {
             try {
                 console.log(`[PostAccessTracker] Profil kapatılıyor: ${profile.name}`);
-                await stopProfile(profile.visionId);
+                await stopProfile(profile.folderId, profile.visionId);
                 console.log('[PostAccessTracker] Profil kapatıldı');
             } catch (stopError) {
                 console.error('[PostAccessTracker] Profil kapatılırken hata:', stopError.message);

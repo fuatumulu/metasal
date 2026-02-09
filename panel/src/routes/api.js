@@ -634,65 +634,65 @@ router.post('/post-access/:id/update-reach', async (req, res) => {
 
         // Telegram bildirimlerini kontrol et
         const reachInt = parseInt(reach);
+        const axios = require('axios'); // Axios'u dışarı al
 
-        // 2000+ erişim bildirimi
-        if (reachInt >= 2000 && !track.notification2k) {
-            const telegramConfig = await prisma.telegramConfig.findFirst({
-                where: { isActive: true }
-            });
+        // Telegram Config'i bir kere al
+        const telegramConfig = await prisma.telegramConfig.findFirst({
+            where: { isActive: true }
+        });
 
-            if (telegramConfig) {
+        if (telegramConfig) {
+            const telegramUrl = `https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`;
+
+            // 2000+ erişim bildirimi
+            if (reachInt >= 2000 && !track.notification2k) {
                 try {
-                    const axios = require('axios');
-                    const message = `📊 <b>LİNK KOYABİLİR</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
+                    const message = `🚧 <b>LİNK EKLENEBİLİR</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
 
-                    await axios.post(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                    await axios.post(telegramUrl, {
                         chat_id: telegramConfig.chatId,
                         text: message,
                         parse_mode: 'HTML'
                     });
 
-                    console.log('[Telegram] 2000+ bildirimi gönderildi');
+                    console.log(`[Telegram] 2000+ bildirimi gönderildi (ChatID: ${telegramConfig.chatId})`);
+
+                    // Sadece başarılı olursa veya deneme yapıldıysa güncelle
+                    await prisma.postAccessTrack.update({
+                        where: { id: parseInt(id) },
+                        data: { notification2k: true }
+                    });
+
                 } catch (telegramError) {
-                    console.error('[Telegram] Bildirim gönderme hatası:', telegramError.message);
+                    console.error('[Telegram] 2K Bildirim hatası:', telegramError.message);
                 }
             }
 
-            // Bildirim flag'ını güncelle
-            await prisma.postAccessTrack.update({
-                where: { id: parseInt(id) },
-                data: { notification2k: true }
-            });
-        }
-
-        // 4000+ erişim bildirimi (ACİL)
-        if (reachInt >= 4000 && !track.notification4k) {
-            const telegramConfig = await prisma.telegramConfig.findFirst({
-                where: { isActive: true }
-            });
-
-            if (telegramConfig) {
+            // 4000+ erişim bildirimi (ACİL)
+            if (reachInt >= 4000 && !track.notification4k) {
                 try {
-                    const axios = require('axios');
-                    const message = `🚨 <b>ACİL</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
+                    const message = `🚨 <b>ACİL LİNK EKLE</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
 
-                    await axios.post(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                    await axios.post(telegramUrl, {
                         chat_id: telegramConfig.chatId,
                         text: message,
                         parse_mode: 'HTML'
                     });
 
-                    console.log('[Telegram] 4000+ bildirimi gönderildi');
+                    console.log(`[Telegram] 4000+ bildirimi gönderildi (ChatID: ${telegramConfig.chatId})`);
+
+                    // Sadece başarılı olursa veya deneme yapıldıysa güncelle
+                    await prisma.postAccessTrack.update({
+                        where: { id: parseInt(id) },
+                        data: { notification4k: true }
+                    });
+
                 } catch (telegramError) {
-                    console.error('[Telegram] Bildirim gönderme hatası:', telegramError.message);
+                    console.error('[Telegram] 4K Bildirim hatası:', telegramError.message);
                 }
             }
-
-            // Bildirim flag'ını güncelle
-            await prisma.postAccessTrack.update({
-                where: { id: parseInt(id) },
-                data: { notification4k: true }
-            });
+        } else {
+            console.log('[Telegram] Aktif konfigürasyon bulunamadı, bildirim atlanıyor.');
         }
 
         res.json({ success: true });
