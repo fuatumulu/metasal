@@ -33,7 +33,7 @@
         <li class="<%= currentPath === '/fb-login' ? 'active' : '' %>">
           <a href="/fb-login">🔐 Facebook Login</a>
         </li>
-        <li class="<%= currentPath === '/post-access' ? 'active' : '' %>">
+        <li class="<%= currentPath.startsWith('/post-access') ? 'active' : '' %>">
           <a href="/post-access">📊 Gönderi Erişim Takibi</a>
         </li>
       </ul>
