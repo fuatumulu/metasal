@@ -28,6 +28,7 @@ model VisionProfile {
   likedTargets     ProfileLikedTarget[]
   tasks            BotTask[]
   postInteractions ProfilePostInteraction[]
+  postAccessTracks PostAccessTrack[]
 }
 
 // Profillerin beğendiği hedefler (tekrar beğenmeyi önlemek için)
@@ -131,4 +132,29 @@ model FacebookAccount {
   retryCount   Int      @default(0)  // Kaç kez denendiği
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// Gönderi Erişim Takibi
+model PostAccessTrack {
+  id                Int           @id @default(autoincrement())
+  url               String        @unique
+  profileId         Int
+  profile           VisionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  status            String        @default("active") // active, paused, link_added
+  currentReach      Int           @default(0)
+  lastCheckedAt     DateTime?
+  notification2k    Boolean       @default(false)
+  notification4k    Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+// Telegram Konfigürasyonu (Panel'den yönetilen)
+model TelegramConfig {
+  id        Int      @id @default(autoincrement())
+  botToken  String
+  chatId    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

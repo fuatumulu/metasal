@@ -5,6 +5,7 @@ const { getPendingTask, reportTaskResult, pushProfiles, sendLog, heartbeat } = r
 const { listProfiles, startProfile, stopProfile, updateProfileStatus, clearAllCaches } = require('./vision');
 const { sleep, likeTarget, boostTarget, findPostByKeyword, likeCurrentPost, commentCurrentPost, shareCurrentPost, simulateHumanBrowsing, ensureMaximized } = require('./facebook');
 const { loadProxyConfig, tryLockCarrier, unlockCarrier, changeIP, getTotalCarrierCount, getDefaultProxyHost } = require('./proxyManager');
+const { checkAllActiveTracks } = require('./postAccessTracker');
 const axios = require('axios');
 
 // Timestamp helper - tüm loglar zaman etiketli olacak
@@ -226,6 +227,29 @@ app.listen(PORT, () => {
         const result = clearAllCaches();
         console.log(`[Memory] Cache temizlendi: ${result.proxiesCleared} proxy, ${result.statusesCleared} status`);
     }, CACHE_CLEANUP_INTERVAL);
+
+    // Gönderi Erişim Takibi interval - Her 30 dakikada bir aktif URL'leri kontrol et
+    const POST_ACCESS_CHECK_INTERVAL = parseInt(process.env.POST_ACCESS_CHECK_INTERVAL) || 1800000; // 30 dakika default
+    console.log(`[PostAccessTracker] Kontrol interval'i: ${POST_ACCESS_CHECK_INTERVAL / 1000 / 60} dakika`);
+
+    setInterval(async () => {
+        console.log('[PostAccessTracker] Periyodik kontrol başlatılıyor...');
+        try {
+            await checkAllActiveTracks(startProfile, stopProfile, sleep);
+        } catch (error) {
+            console.error('[PostAccessTracker] Periyodik kontrol hatası:', error.message);
+        }
+    }, POST_ACCESS_CHECK_INTERVAL);
+
+    // İlk kontrol'ü hemen başlat (bot başladıktan 1 dakika sonra)
+    setTimeout(async () => {
+        console.log('[PostAccessTracker] İlk kontrol başlatılıyor...');
+        try {
+            await checkAllActiveTracks(startProfile, stopProfile, sleep);
+        } catch (error) {
+            console.error('[PostAccessTracker] İlk kontrol hatası:', error.message);
+        }
+    }, 60000); // 1 dakika
 
     startAllThreads().catch(console.error);
 });

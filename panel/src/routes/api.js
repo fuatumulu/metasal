@@ -553,4 +553,153 @@ router.get('/fb-login/should-process', async (req, res) => {
     }
 });
 
+// ==================== GÖNDERİ ERİŞİM TAKİBİ API ====================
+
+// Telegram konfigürasyonunu al (Bot tarafından çağrılır)
+router.get('/telegram-config', async (req, res) => {
+    try {
+        const config = await prisma.telegramConfig.findFirst({
+            where: { isActive: true }
+        });
+
+        if (!config) {
+            return res.json({ success: false, message: 'Telegram konfigürasyonu bulunamadı' });
+        }
+
+        res.json({
+            success: true,
+            config: {
+                botToken: config.botToken,
+                chatId: config.chatId,
+                isActive: config.isActive
+            }
+        });
+    } catch (error) {
+        console.error('Telegram config error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Aktif URL'leri al (Bot tarafından çağrılır)
+router.get('/post-access/active', async (req, res) => {
+    try {
+        const tracks = await prisma.postAccessTrack.findMany({
+            where: { status: 'active' },
+            include: {
+                profile: {
+                    select: {
+                        id: true,
+                        name: true,
+                        visionId: true,
+                        folderId: true
+                    }
+                }
+            }
+        });
+
+        res.json({ success: true, tracks });
+    } catch (error) {
+        console.error('Get active post access error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Erişim sayısını güncelle (Bot tarafından çağrılır)
+router.post('/post-access/:id/update-reach', async (req, res) => {
+    const { id } = req.params;
+    const { reach } = req.body;
+
+    if (reach === undefined || reach === null) {
+        return res.status(400).json({ success: false, error: 'Erişim sayısı gerekli' });
+    }
+
+    try {
+        // Mevcut track'ı al
+        const track = await prisma.postAccessTrack.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!track) {
+            return res.status(404).json({ success: false, error: 'URL bulunamadı' });
+        }
+
+        // Erişim sayısını güncelle
+        await prisma.postAccessTrack.update({
+            where: { id: parseInt(id) },
+            data: {
+                currentReach: parseInt(reach),
+                lastCheckedAt: new Date()
+            }
+        });
+
+        // Telegram bildirimlerini kontrol et
+        const reachInt = parseInt(reach);
+
+        // 2000+ erişim bildirimi
+        if (reachInt >= 2000 && !track.notification2k) {
+            const telegramConfig = await prisma.telegramConfig.findFirst({
+                where: { isActive: true }
+            });
+
+            if (telegramConfig) {
+                try {
+                    const axios = require('axios');
+                    const message = `📊 <b>LİNK KOYABİLİR</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
+
+                    await axios.post(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                        chat_id: telegramConfig.chatId,
+                        text: message,
+                        parse_mode: 'HTML'
+                    });
+
+                    console.log('[Telegram] 2000+ bildirimi gönderildi');
+                } catch (telegramError) {
+                    console.error('[Telegram] Bildirim gönderme hatası:', telegramError.message);
+                }
+            }
+
+            // Bildirim flag'ını güncelle
+            await prisma.postAccessTrack.update({
+                where: { id: parseInt(id) },
+                data: { notification2k: true }
+            });
+        }
+
+        // 4000+ erişim bildirimi (ACİL)
+        if (reachInt >= 4000 && !track.notification4k) {
+            const telegramConfig = await prisma.telegramConfig.findFirst({
+                where: { isActive: true }
+            });
+
+            if (telegramConfig) {
+                try {
+                    const axios = require('axios');
+                    const message = `🚨 <b>ACİL</b>\n\nURL: ${track.url}\nErişim: ${reachInt.toLocaleString('tr-TR')}`;
+
+                    await axios.post(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+                        chat_id: telegramConfig.chatId,
+                        text: message,
+                        parse_mode: 'HTML'
+                    });
+
+                    console.log('[Telegram] 4000+ bildirimi gönderildi');
+                } catch (telegramError) {
+                    console.error('[Telegram] Bildirim gönderme hatası:', telegramError.message);
+                }
+            }
+
+            // Bildirim flag'ını güncelle
+            await prisma.postAccessTrack.update({
+                where: { id: parseInt(id) },
+                data: { notification4k: true }
+            });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update reach error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;

@@ -1,0 +1,308 @@
+<%- include('layout', { title: 'Gönderi Erişim Takibi' }) %>
+
+<div class="container">
+    <h1>Gönderi Erişim Takibi</h1>
+
+    <!-- Telegram Konfigürasyonu -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3>Telegram Konfigürasyonu</h3>
+        </div>
+        <div class="card-body">
+            <form action="/post-access/telegram-config" method="POST">
+                <div class="form-group">
+                    <label for="botToken">Bot Token</label>
+                    <input type="text" class="form-control" id="botToken" name="botToken" 
+                           value="<%= telegramConfig ? telegramConfig.botToken : '' %>" 
+                           placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" required>
+                </div>
+                <div class="form-group">
+                    <label for="chatId">Chat ID</label>
+                    <input type="text" class="form-control" id="chatId" name="chatId" 
+                           value="<%= telegramConfig ? telegramConfig.chatId : '' %>" 
+                           placeholder="123456789" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="isActive" value="true" 
+                               <%= telegramConfig && telegramConfig.isActive ? 'checked' : '' %>>
+                        Aktif
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">Kaydet</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Profil Seçimi -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3>Vision Profil Seçimi</h3>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label for="folderId">Vision Folder ID</label>
+                <input type="text" class="form-control" id="folderId" 
+                       placeholder="Folder UUID'sini girin">
+                <small class="form-text text-muted">Folder ID girdikten sonra profiller yüklenecek</small>
+            </div>
+            <div class="form-group" id="profileSelection" style="display: none;">
+                <label for="selectedProfile">Profil Seçin</label>
+                <select class="form-control" id="selectedProfile">
+                    <option value="">-- Profil Seçin --</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- URL Yönetimi -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3>URL Yönetimi</h3>
+        </div>
+        <div class="card-body">
+            <!-- Yeni URL Ekle -->
+            <form action="/post-access/add" method="POST" class="mb-3" id="addUrlForm">
+                <div class="row">
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" name="url" 
+                               placeholder="Facebook gönderi URL'si" required>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="hidden" name="profileId" id="profileIdInput">
+                        <button type="submit" class="btn btn-success">Ekle</button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">
+                    Önce yukarıdan bir profil seçin, sonra URL ekleyin
+                </small>
+            </form>
+
+            <!-- URL Listesi -->
+            <% if (tracks && tracks.length > 0) { %>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>URL</th>
+                            <th>Profil</th>
+                            <th>Durum</th>
+                            <th>Erişim</th>
+                            <th>Son Kontrol</th>
+                            <th>Aksiyonlar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% tracks.forEach(track => { %>
+                            <tr>
+                                <td>
+                                    <a href="<%= track.url %>" target="_blank" 
+                                       style="max-width: 300px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        <%= track.url %>
+                                    </a>
+                                </td>
+                                <td><%= track.profile.name %></td>
+                                <td>
+                                    <% if (track.status === 'active') { %>
+                                        <span class="badge badge-success">Aktif</span>
+                                    <% } else if (track.status === 'paused') { %>
+                                        <span class="badge badge-warning">Duraklatıldı</span>
+                                    <% } else if (track.status === 'link_added') { %>
+                                        <span class="badge badge-info">Link Eklendi</span>
+                                    <% } %>
+                                </td>
+                                <td><%= track.currentReach.toLocaleString('tr-TR') %></td>
+                                <td><%= track.lastCheckedAt %></td>
+                                <td>
+                                    <% if (track.status === 'active') { %>
+                                        <button class="btn btn-sm btn-warning" 
+                                                onclick="toggleStatus(<%= track.id %>, 'paused')">
+                                            Duraklat
+                                        </button>
+                                    <% } else if (track.status === 'paused') { %>
+                                        <button class="btn btn-sm btn-success" 
+                                                onclick="toggleStatus(<%= track.id %>, 'active')">
+                                            Aktifleştir
+                                        </button>
+                                    <% } %>
+                                    
+                                    <% if (track.status !== 'link_added') { %>
+                                        <button class="btn btn-sm btn-info" 
+                                                onclick="markLinkAdded(<%= track.id %>)">
+                                            Link Eklendi
+                                        </button>
+                                    <% } %>
+                                    
+                                    <button class="btn btn-sm btn-danger" 
+                                            onclick="deleteUrl(<%= track.id %>)">
+                                        Sil
+                                    </button>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            <% } else { %>
+                <p class="text-muted">Henüz takip edilen URL yok.</p>
+            <% } %>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedProfileId = null;
+
+// Folder ID değiştiğinde profilleri yükle
+document.getElementById('folderId').addEventListener('change', async function() {
+    const folderId = this.value.trim();
+    
+    if (!folderId) {
+        document.getElementById('profileSelection').style.display = 'none';
+        return;
+    }
+
+    try {
+        const response = await fetch(`/post-access/profiles/${folderId}`);
+        const data = await response.json();
+
+        if (data.success && data.profiles.length > 0) {
+            const select = document.getElementById('selectedProfile');
+            select.innerHTML = '<option value="">-- Profil Seçin --</option>';
+            
+            data.profiles.forEach(profile => {
+                const option = document.createElement('option');
+                option.value = profile.id;
+                option.textContent = `${profile.name} (${profile.status})`;
+                select.appendChild(option);
+            });
+
+            document.getElementById('profileSelection').style.display = 'block';
+        } else {
+            alert('Bu klasörde profil bulunamadı');
+        }
+    } catch (error) {
+        console.error('Profil yükleme hatası:', error);
+        alert('Profiller yüklenirken hata oluştu');
+    }
+});
+
+// Profil seçildiğinde
+document.getElementById('selectedProfile').addEventListener('change', function() {
+    selectedProfileId = this.value;
+    document.getElementById('profileIdInput').value = selectedProfileId;
+});
+
+// Form submit kontrolü
+document.getElementById('addUrlForm').addEventListener('submit', function(e) {
+    if (!selectedProfileId) {
+        e.preventDefault();
+        alert('Lütfen önce bir profil seçin');
+    }
+});
+
+// URL durumunu değiştir
+async function toggleStatus(id, newStatus) {
+    try {
+        const response = await fetch(`/post-access/${id}/toggle-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Durum değiştirilemedi');
+        }
+    } catch (error) {
+        console.error('Durum değiştirme hatası:', error);
+        alert('İşlem sırasında hata oluştu');
+    }
+}
+
+// Link eklendi işaretle
+async function markLinkAdded(id) {
+    if (!confirm('Bu URL için "Link Eklendi" olarak işaretlensin mi?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/post-access/${id}/mark-link-added`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('İşaretleme başarısız');
+        }
+    } catch (error) {
+        console.error('İşaretleme hatası:', error);
+        alert('İşlem sırasında hata oluştu');
+    }
+}
+
+// URL sil
+async function deleteUrl(id) {
+    if (!confirm('Bu URL silinsin mi?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/post-access/${id}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Silme başarısız');
+        }
+    } catch (error) {
+        console.error('Silme hatası:', error);
+        alert('İşlem sırasında hata oluştu');
+    }
+}
+</script>
+
+<style>
+.card {
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-bottom: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+}
+
+.card-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+.badge {
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.badge-success { background-color: #28a745; color: white; }
+.badge-warning { background-color: #ffc107; color: black; }
+.badge-info { background-color: #17a2b8; color: white; }
+
+.btn-sm {
+    padding: 3px 8px;
+    font-size: 12px;
+    margin-right: 5px;
+}
+</style>
