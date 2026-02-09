@@ -36,27 +36,49 @@ async function updateReachOnPanel(trackId, reach) {
     }
 }
 
-// Sayfadan erişim sayısını çek (placeholder - kullanıcı selector verecek)
+// Sayfadan erişim sayısını çek
 async function extractReachFromPage(page) {
     try {
-        // PLACEHOLDER: Kullanıcı ileride hangi HTML selector'ünü kullanacağını söyleyecek
-        // Şimdilik basit bir örnek:
-        // const reach = await page.evaluate(() => {
-        //     const element = document.querySelector('.reach-count-selector');
-        //     return element ? parseInt(element.textContent.replace(/\D/g, '')) : 0;
-        // });
-
-        // Geçici olarak: Sayfanın body'sinde sayı ara
         const reach = await page.evaluate(() => {
-            // Bu kısım kullanıcı tarafından özelleştirilecek
-            const bodyText = document.body.innerText;
-            const numbers = bodyText.match(/\d{1,3}(,\d{3})*/g);
+            // "People reached" veya "Erişilen Kişiler" içeren elementi bul
+            const labels = Array.from(document.querySelectorAll('span'));
+            const reachLabel = labels.find(el =>
+                el.textContent.includes('People reached') ||
+                el.textContent.includes('Erişilen Kişiler')
+            );
 
-            if (numbers && numbers.length > 0) {
-                // İlk bulunan büyük sayıyı al (geçici)
-                return parseInt(numbers[0].replace(/,/g, ''));
+            if (!reachLabel) {
+                console.log('Erişim etiketi bulunamadı');
+                return 0;
             }
 
+            // Parent container'ı bul
+            const container = reachLabel.closest('div');
+            if (!container) {
+                console.log('Parent container bulunamadı');
+                return 0;
+            }
+
+            // Container içindeki tüm span'leri tara
+            const allSpans = container.querySelectorAll('span');
+
+            for (let span of allSpans) {
+                const text = span.textContent.trim();
+
+                // Sadece rakam, virgül ve nokta içeren metni ara
+                if (/^[\d,.]+$/.test(text)) {
+                    // Virgül ve noktaları temizle, sayıya çevir
+                    const number = parseInt(text.replace(/[,.]/g, ''));
+
+                    // Makul bir sayı mı kontrol et (0-10M arası)
+                    if (number > 0 && number < 10000000) {
+                        console.log('Erişim sayısı bulundu:', number);
+                        return number;
+                    }
+                }
+            }
+
+            console.log('Erişim sayısı parse edilemedi');
             return 0;
         });
 
@@ -67,29 +89,18 @@ async function extractReachFromPage(page) {
     }
 }
 
-// Bir gönderiyi kontrol et
-async function checkPostAccess(track, startProfile, stopProfile, sleep) {
-    const { id, url, profile } = track;
+// Tek bir URL'yi kontrol et (profil zaten açık)
+async function checkSingleURL(track, browser, sleep) {
+    const { id, url } = track;
 
-    console.log(`[PostAccessTracker] Kontrol başlıyor - Track ID: ${id}, URL: ${url}`);
-
-    let browser = null;
+    console.log(`[PostAccessTracker] URL kontrol ediliyor - Track ID: ${id}`);
 
     try {
-        // Vision profilini başlat (admin yetkili profil)
-        console.log(`[PostAccessTracker] Profil başlatılıyor: ${profile.name}`);
-        browser = await startProfile(profile.folderId, profile.visionId);
-
-        if (!browser) {
-            console.error(`[PostAccessTracker] Profil başlatılamadı: ${profile.name}`);
-            return;
-        }
-
         // Yeni sayfa aç
         const page = await browser.newPage();
 
         // URL'ye git
-        console.log(`[PostAccessTracker] URL'ye gidiliyor: ${url}`);
+        console.log(`[PostAccessTracker] URL: ${url}`);
         await page.goto(url, {
             waitUntil: 'networkidle2',
             timeout: 60000
@@ -100,7 +111,7 @@ async function checkPostAccess(track, startProfile, stopProfile, sleep) {
 
         // Erişim sayısını çek
         const reach = await extractReachFromPage(page);
-        console.log(`[PostAccessTracker] Erişim sayısı: ${reach}`);
+        console.log(`[PostAccessTracker] Track ID ${id} - Erişim: ${reach}`);
 
         // Panele gönder
         await updateReachOnPanel(id, reach);
@@ -108,23 +119,10 @@ async function checkPostAccess(track, startProfile, stopProfile, sleep) {
         // Sayfayı kapat
         await page.close();
 
-        // Profili durdur
-        console.log(`[PostAccessTracker] Profil durduruluyor: ${profile.name}`);
-        await stopProfile(profile.folderId, profile.visionId);
-
-        console.log(`[PostAccessTracker] Kontrol tamamlandı - Track ID: ${id}`);
+        console.log(`[PostAccessTracker] Track ID ${id} tamamlandı`);
 
     } catch (error) {
         console.error(`[PostAccessTracker] Track ID ${id} kontrol hatası:`, error.message);
-
-        // Hata durumunda profili durdur
-        if (browser) {
-            try {
-                await stopProfile(profile.folderId, profile.visionId);
-            } catch (stopError) {
-                console.error('[PostAccessTracker] Profil durdurulurken hata:', stopError.message);
-            }
-        }
     }
 }
 
@@ -141,14 +139,50 @@ async function checkAllActiveTracks(startProfile, stopProfile, sleep) {
 
     console.log(`[PostAccessTracker] ${tracks.length} aktif track bulundu`);
 
-    for (const track of tracks) {
-        await checkPostAccess(track, startProfile, stopProfile, sleep);
+    // Profil bilgilerini al (hepsi aynı profili kullanıyor)
+    const { profile } = tracks[0];
+    let browser = null;
 
-        // Track'ler arasında bekleme (rate limiting)
-        await sleep(5000);
+    try {
+        // Profili bir kez başlat
+        console.log(`[PostAccessTracker] Profil başlatılıyor: ${profile.name}`);
+        browser = await startProfile(profile.folderId, profile.visionId);
+
+        if (!browser) {
+            console.error(`[PostAccessTracker] Profil başlatılamadı: ${profile.name}`);
+            return;
+        }
+
+        // Tüm URL'leri sırayla kontrol et
+        for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i];
+
+            console.log(`[PostAccessTracker] İşleniyor: ${i + 1}/${tracks.length}`);
+            await checkSingleURL(track, browser, sleep);
+
+            // URL'ler arası bekleme (son URL değilse)
+            if (i < tracks.length - 1) {
+                await sleep(3000);
+            }
+        }
+
+        console.log('[PostAccessTracker] Tüm track\'ler kontrol edildi');
+
+    } catch (error) {
+        console.error('[PostAccessTracker] Genel hata:', error.message);
+
+    } finally {
+        // Her durumda profili kapat
+        if (browser) {
+            try {
+                console.log(`[PostAccessTracker] Profil kapatılıyor: ${profile.name}`);
+                await stopProfile(profile.visionId);
+                console.log('[PostAccessTracker] Profil kapatıldı');
+            } catch (stopError) {
+                console.error('[PostAccessTracker] Profil kapatılırken hata:', stopError.message);
+            }
+        }
     }
-
-    console.log('[PostAccessTracker] Tüm track\'ler kontrol edildi');
 }
 
 module.exports = {
