@@ -10,6 +10,12 @@ router.get('/', async (req, res) => {
         // Telegram config al
         const telegramConfig = await prisma.telegramConfig.findFirst();
 
+        // Tüm profilleri al
+        const allProfiles = await prisma.visionProfile.findMany({
+            select: { id: true, name: true, visionId: true, status: true, folderId: true },
+            orderBy: { name: 'asc' }
+        });
+
         // Takip edilen URL'leri al
         const tracks = await prisma.postAccessTrack.findMany({
             include: {
@@ -22,6 +28,7 @@ router.get('/', async (req, res) => {
 
         res.render('post-access', {
             telegramConfig,
+            allProfiles,
             tracks: tracks.map(track => ({
                 ...track,
                 lastCheckedAt: track.lastCheckedAt

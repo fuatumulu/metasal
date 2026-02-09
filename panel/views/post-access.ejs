@@ -81,19 +81,25 @@
         <!-- Profil Seçimi -->
         <div class="card">
             <div class="card-header">
-                <h3>Vision Profil Seçimi</h3>
+                <h3>Profil Seçimi</h3>
             </div>
             <div class="card-body">
                 <div class="form-group">
-                    <label for="folderId">Vision Folder ID</label>
-                    <input type="text" class="form-control" id="folderId" placeholder="Folder UUID'sini girin">
-                    <small class="form-text text-muted">Folder ID girdikten sonra profiller yüklenecek</small>
-                </div>
-                <div class="form-group" id="profileSelection" style="display: none;">
-                    <label for="selectedProfile">Profil Seçin</label>
+                    <label for="selectedProfile">Kontrol için kullanılacak profili seçin</label>
                     <select class="form-control" id="selectedProfile">
                         <option value="">-- Profil Seçin --</option>
+                        <% if (allProfiles && allProfiles.length> 0) { %>
+                            <% allProfiles.forEach(profile=> { %>
+                                <option value="<%= profile.id %>">
+                                    <%= profile.name %> (<%= profile.status %>)
+                                </option>
+                                <% }); %>
+                                    <% } %>
                     </select>
+                    <small class="form-text text-muted">
+                        Bu profil gönderilerin erişim istatistiklerini kontrol etmek için kullanılacak.
+                        Admin yetkisi olan bir profil seçin.
+                    </small>
                 </div>
             </div>
         </div>
@@ -199,57 +205,14 @@
     <script>
         let selectedProfileId = null;
 
-        // Folder ID değiştiğinde profilleri yükle (input event kullan - her karakter girişinde tetiklenir)
-        document.getElementById('folderId').addEventListener('input', async function () {
-            const folderId = this.value.trim();
-
-            if (!folderId) {
-                document.getElementById('profileSelection').style.display = 'none';
-                return;
-            }
-
-            // Minimum uzunluk kontrolü (folder ID genelde UUID formatında)
-            if (folderId.length < 10) {
-                return; // Henüz tam ID girilmemiş
-            }
-
-            console.log('Folder ID ile profil aranıyor:', folderId);
-
-            try {
-                const response = await fetch(`/post-access/profiles/${encodeURIComponent(folderId)}`);
-                const data = await response.json();
-
-                console.log('API Response:', data);
-
-                if (data.success && data.profiles && data.profiles.length > 0) {
-                    const select = document.getElementById('selectedProfile');
-                    select.innerHTML = '<option value="">-- Profil Seçin --</option>';
-
-                    data.profiles.forEach(profile => {
-                        const option = document.createElement('option');
-                        option.value = profile.id;
-                        option.textContent = `${profile.name} (${profile.status})`;
-                        select.appendChild(option);
-                    });
-
-                    document.getElementById('profileSelection').style.display = 'block';
-                    console.log(`${data.profiles.length} profil bulundu`);
-                } else {
-                    console.warn('Profil bulunamadı:', data);
-                    document.getElementById('profileSelection').style.display = 'none';
-                    alert('Bu klasörde profil bulunamadı. Console\'u kontrol edin.');
-                }
-            } catch (error) {
-                console.error('Profil yükleme hatası:', error);
-                alert('Profiller yüklenirken hata oluştu: ' + error.message);
-            }
-        });
-
-
         // Profil seçildiğinde
         document.getElementById('selectedProfile').addEventListener('change', function () {
             selectedProfileId = this.value;
             document.getElementById('profileIdInput').value = selectedProfileId;
+
+            if (selectedProfileId) {
+                console.log('Seçilen profil ID:', selectedProfileId);
+            }
         });
 
         // Form submit kontrolü
