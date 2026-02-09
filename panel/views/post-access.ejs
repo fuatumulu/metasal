@@ -199,8 +199,8 @@
     <script>
         let selectedProfileId = null;
 
-        // Folder ID değiştiğinde profilleri yükle
-        document.getElementById('folderId').addEventListener('change', async function () {
+        // Folder ID değiştiğinde profilleri yükle (input event kullan - her karakter girişinde tetiklenir)
+        document.getElementById('folderId').addEventListener('input', async function () {
             const folderId = this.value.trim();
 
             if (!folderId) {
@@ -208,11 +208,20 @@
                 return;
             }
 
+            // Minimum uzunluk kontrolü (folder ID genelde UUID formatında)
+            if (folderId.length < 10) {
+                return; // Henüz tam ID girilmemiş
+            }
+
+            console.log('Folder ID ile profil aranıyor:', folderId);
+
             try {
-                const response = await fetch(`/post-access/profiles/${folderId}`);
+                const response = await fetch(`/post-access/profiles/${encodeURIComponent(folderId)}`);
                 const data = await response.json();
 
-                if (data.success && data.profiles.length > 0) {
+                console.log('API Response:', data);
+
+                if (data.success && data.profiles && data.profiles.length > 0) {
                     const select = document.getElementById('selectedProfile');
                     select.innerHTML = '<option value="">-- Profil Seçin --</option>';
 
@@ -224,14 +233,18 @@
                     });
 
                     document.getElementById('profileSelection').style.display = 'block';
+                    console.log(`${data.profiles.length} profil bulundu`);
                 } else {
-                    alert('Bu klasörde profil bulunamadı');
+                    console.warn('Profil bulunamadı:', data);
+                    document.getElementById('profileSelection').style.display = 'none';
+                    alert('Bu klasörde profil bulunamadı. Console\'u kontrol edin.');
                 }
             } catch (error) {
                 console.error('Profil yükleme hatası:', error);
-                alert('Profiller yüklenirken hata oluştu');
+                alert('Profiller yüklenirken hata oluştu: ' + error.message);
             }
         });
+
 
         // Profil seçildiğinde
         document.getElementById('selectedProfile').addEventListener('change', function () {
